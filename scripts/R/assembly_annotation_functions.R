@@ -251,7 +251,8 @@ make_database <- function(file,fun='hmmpress',type='prot') {
   
 }
 
-#annotate genes with hmmscan
+#hmmscan
+#annotate genes
 annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
@@ -269,7 +270,7 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
-
+    
     if (!file.exists(inpath.list[i])){
       warning(sprintf("The amino acid fasta file for: '%s' is missing.",accession.list[i]))
       next
@@ -281,9 +282,32 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
                            evalue,
                            db,
                            inpath.list[i])
-    invisible(system(cmd.hmmscan)) #I make the terminal output invisible because it slows the code down too much
+    system(cmd.hmmscan) #can't suppress terminal output from hmmscan
   }
   
   
 }
 
+
+dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
+  
+  annotate_hmmscan(accession.list, db)
+  
+  hmm.parser <- './scripts/bash/hmmscan-parser.sh'
+  if (!file.exists(hmm.parser)){
+    stop('This function uses a parsing file published for dbCAN. The filepath for this script should be ./scripts/bash/hmm-parser.sh\n\nThis script can be downloaded from: https://bcb.unl.edu/dbCAN2/download/Databases/V10/hmmscan-parser.sh\n\nNote, this verion corresponds to dbCAN v10')
+  }
+  
+  dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
+  inpath.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'.tsv')
+  outpath.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'_parsed','.tsv')
+  
+  n.accession <- length(accession.list)
+  for(i in 1:n.accession) {
+    
+    cmd.clean.dbcan <- sprintf("bash %s > %s",inpath.list[i],outpath.list[i])
+    
+    system(cmd.clean.dbcan)
+  }
+  
+}
