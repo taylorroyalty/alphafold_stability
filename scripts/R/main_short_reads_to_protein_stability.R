@@ -7,6 +7,7 @@ source("scripts/R/assembly_annotation_functions.R")
 conda.path <- "/home/troyalty/Software/bioinformatics/miniconda3/bin/conda"
 conda.env <- "assembly_annotation"
 accession.list <- c("SRR7066493")
+dbcan.db <- 'data/database/dbCAN-HMMdb-V10.txt'
 override <- TRUE
 
 #Identify conda bin path
@@ -29,3 +30,9 @@ assemble_reads(accession.list, megahit.cores=30, min.contig.length = 1000)
 
 #predict contig ORFs
 predict_ORFs(accession.list)
+
+#make a dbcan database
+make_database(dbcan.db)
+
+#annotate genes with dbcan annotations
+annotate_hmmscan(accession.list = accession.list, dbcan.db)

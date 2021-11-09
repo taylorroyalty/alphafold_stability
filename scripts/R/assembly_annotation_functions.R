@@ -38,13 +38,18 @@ create_all_subdirectories <- function(override=FALSE){
     dir.create(dir.genes.gff,recursive = TRUE)
   }
   
+  if (!dir.exists(dir.annotation.hmm)){
+    dir.create(dir.annotation.hmm,recursive = TRUE)
+  }
+  
   if (!dir.exists(dir.database)){
     dir.create(dir.database,recursive = TRUE)
+    warning('Files for constructing databases will need to be manually added to this directory if this is where you want to store them...')
   }
 }
 
 #create standardized directory architecture for metagenome analysis
-create_some_subdirectories <- function(override=FALSE,){
+create_some_subdirectories <- function(override=FALSE){
   
   if (override == TRUE){
     unlink("data/sequence",recursive = TRUE)
@@ -242,9 +247,12 @@ make_database <- function(file,fun='hmmpress',type='prot') {
                        'hmmpress' = sprintf("hmmpress -f %s",file),
                        'makeblastdb' = sprintf("makeblastdb -dbtype %s -in %s -out %s",type,file,file))
   
+  system(cmd.makedb)
+  
 }
 
-annotate_hmmscan <- function(accession.list, hmm.cores=30, evalue=1e-10){
+#annotate genes with hmmscan
+annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
   if (!dir.exists(dir.genes.aa)){
@@ -256,28 +264,26 @@ annotate_hmmscan <- function(accession.list, hmm.cores=30, evalue=1e-10){
     stop("TThe output directory for amino acid fasta files does not exist or has no files.")
   }
   
-  inpath.list <- paste0(dir.genes.aa,accession.list)
-  outdir.list <- paste0(dir.annotation.hmm,accession.list)
+  inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
+  outdir.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'.tsv')
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
-    
-    inpath.tmp <- paste0(inpath.list[i],'/',accession.list[i],'.faa')
-    outpath.tmp <- paste0(outdir.list[i],'/',accession.list[i],'')
-    if (!file.exists(inpath.tmp)){
+
+    if (!file.exists(inpath.list[i])){
       warning(sprintf("The amino acid fasta file for: '%s' is missing.",accession.list[i]))
       next
     }
     
-    cmd.hmmscan <- sprintf("hmmscan --cpu %s --domtblout %s -E %s $dbcan_db %s",
+    cmd.hmmscan <- sprintf("hmmscan --cpu %s --domtblout %s -E %s %s %s",
                            hmm.cores,
-                           outdir,
-                           megahit.cores,
-                           outdirs[i],
-                           accession.list[i],
-                           min.contig.length)
-    system(cmd.hmmscan)
+                           outdir.list[i],
+                           evalue,
+                           db,
+                           inpath.list[i])
+    invisible(system(cmd.hmmscan)) #I make the terminal output invisible because it slows the code down too much
   }
   
   
 }
+
