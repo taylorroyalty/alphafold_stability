@@ -291,7 +291,7 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
 
 dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
-  annotate_hmmscan(accession.list, db)
+  annotate_hmmscan(accession.list, db, hmm.cores, evalue)
   
   hmm.parser <- './scripts/bash/hmmscan-parser.sh'
   if (!file.exists(hmm.parser)){
