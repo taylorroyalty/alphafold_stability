@@ -6,7 +6,7 @@ source("scripts/R/assembly_annotation_functions.R")
 
 conda.path <- "/home/troyalty/Software/bioinformatics/miniconda3/bin/conda"
 conda.env <- "assembly_annotation"
-accession.list <- c("SRR7066493")#,"SRR7066492")
+accession.list <- c("SRR7066493")
 override <- TRUE
 
 #Identify conda bin path
@@ -22,7 +22,10 @@ create_sequence_directories(override = override)
 download_SRR(accession.list = accession.list, numCores = 2)
 
 #trim adaptars and drop low quality reads
-trim_reads(accession.list = accession.list, bin.path=conda.path)
+trim_reads(accession.list = accession.list)
 
 #assemble short reads into contigs
 assemble_reads(accession.list, megahit.cores=30, min.contig.length = 1000)
+
+#predict contig ORFs
+predict_ORFs(accession.list)
