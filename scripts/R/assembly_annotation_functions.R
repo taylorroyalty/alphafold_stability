@@ -1,3 +1,4 @@
+#create standardized directory format for downstream processing.
 create_subdirectories <- function(base.layer="fastq.raw",override=FALSE){
   
   if (!base.layer %in% c("fastq.raw","fastq.trim","sequence","genes","hmm","database")){
@@ -16,6 +17,8 @@ create_subdirectories <- function(base.layer="fastq.raw",override=FALSE){
   dir.genes.gff <- "data/sequence/genes/gff/"
   dir.annotation.hmm <- "data/sequence/annotation/hmm/"
   dir.database <- "data/database/"
+  dir.intracellular <- "data/sequence/genes/aa/signalp/intracellular/"
+  dir.extracellular <- "data/sequence/genes/aa/signalp/extracellular/"
   
   warning('If not using fastq-dump, genomic data will need to be manually added to whatever the user-defined base layer is.')
   
@@ -36,7 +39,8 @@ create_subdirectories <- function(base.layer="fastq.raw",override=FALSE){
   
   if ((!dir.exists(dir.genes.aa) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
     create <- TRUE
-    dir.create(dir.genes.aa,recursive = TRUE)
+    dir.create(dir.intracellular,recursive = TRUE)
+    dir.create(dir.extracellular,recursive = TRUE)
   }
   
   if ((!dir.exists(dir.genes.nuc) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
@@ -68,7 +72,7 @@ download_SRR <- function(accession.list, numCores=1){
   
   dir.fastq.raw <- "./data/sequence/fastq/raw/"
   if (!dir.exists(dir.fastq.raw)){
-    stop("The output directory for fastq-dump does not exist.\n\nConsider executing the create_sequence_directories function first.")
+    stop("The output directory for fastq-dump does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
   n.accession <- length(accession.list)
@@ -90,7 +94,7 @@ trim_reads <- function(accession.list, fastp.cores=16){
   
   dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
   if (!dir.exists(dir.fastq.trim)){
-    stop("The output directory for trimmomatic does not exist.\n\nConsider executing the create_sequence_directories function first.")
+    stop("The output directory for trimmomatic does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
   dir.fastq.raw <- "./data/sequence/fastq/raw/"
@@ -123,7 +127,7 @@ assemble_reads <- function(accession.list, megahit.cores=30, min.contig.length =
   
   dir.assembly <- "./data/sequence/assemblies/"
   if (!dir.exists(dir.assembly)){
-    stop("The output directory for megahit does not exist.\n\nConsider executing the create_sequence_directories function first.")
+    stop("The output directory for megahit does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
   dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
@@ -162,7 +166,7 @@ predict_ORFs <- function(accession.list,extension=".contigs.fa"){
   dir.genes.nuc <- "data/sequence/genes/nuc/"
   dir.genes.gff <- "data/sequence/genes/gff/"
   if (!dir.exists(dir.genes.aa) | !dir.exists(dir.genes.nuc) | !dir.exists(dir.genes.gff)){
-    stop("The output directory for genes does not exist.\n\nConsider executing the create_sequence_directories function first.")
+    stop("The output directory for genes does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
   dir.assembly <- "./data/sequence/assemblies/"
@@ -211,7 +215,7 @@ make_database <- function(file,fun='hmmpress',type='prot') {
   
   # dir.database <- "./data/database"
   # if (!dir.exists(dir.database)){
-  #   stop("The output directory for databases does not exist.\n\nConsider executing the create_sequence_directories function first.")
+  #   stop("The output directory for databases does not exist.\n\nConsider executing the create_subdirectories function first.")
   # }
   
   warning("This generates the database in the same directory as the file.\n\nIf you do not have write permissions, please considering copying 'file' to a new location.")
@@ -229,13 +233,13 @@ make_database <- function(file,fun='hmmpress',type='prot') {
 annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
-  if (!dir.exists(dir.genes.aa)){
-    stop("The output directory for hmm annotations does not exist.\n\nConsider executing the create_sequence_directories function first.")
+  if (!dir.exists(dir.annotation.hmm)){
+    stop("The output directory for hmm annotations does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
   dir.genes.aa <- "./data/sequence/genes/aa/"
   if (!dir.exists(dir.genes.aa) | (length(list.files(dir.genes.aa)) == 0 )){
-    stop("TThe output directory for amino acid fasta files does not exist or has no files.")
+    stop("The output directory for amino acid fasta files does not exist or has no files.")
   }
   
   inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
@@ -261,7 +265,8 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
 }
 
-
+#uses annotate_hmmscan and applies hmm-parser.sh function on the output as is done on dbcan's server
+#annotate genes
 dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   annotate_hmmscan(accession.list, db, hmm.cores, evalue)
@@ -278,9 +283,64 @@ dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
     
-    cmd.clean.dbcan <- sprintf("bash %s > %s",inpath.list[i],outpath.list[i])
+    cmd.clean.dbcan <- sprintf("bash %s %s > %s",hmm.parser,inpath.list[i],outpath.list[i])
     
     system(cmd.clean.dbcan)
   }
   
+}
+
+#signalp v5.0 
+#identifies putative signal peptides and provides the option to cleave at predicted cleavage sites
+#Note that signalp is stored in the local /usr/local/bin and is in PATH. 
+filter_signal_peptide <- function(accession.list, cleave = FALSE){
+  
+  dir.extracellular <- "./data/sequence/genes/aa/signalp/extracellular/"
+  dir.intracellular <- "./data/sequence/genes/aa/signalp/intracellular/"
+  if (!dir.exists(dir.extracellular) | !dir.exists(dir.intracellular)){
+    stop("The output directories for signalp do not exist.\n\nConsider executing the create_subdirectories function first.")
+  }
+  
+  dir.genes.aa <- "./data/sequence/genes/aa/"
+  if (!dir.exists(dir.genes.aa) | (length(list.files(dir.genes.aa)) == 0 )){
+    stop("The output directory for amino acid fasta files does not exist or has no files.")
+  }
+  
+  inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
+  outdir.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'.tsv')
+  
+  #make a temporary directory to house all temporary files generated from signalp
+  dir.tmp <- "./data/sequence/genes/aa/signalp/tmp/"
+  unlink(dir.tmp,recursive = TRUE)
+  dir.create(dir.tmp,recursive = TRUE)
+  outdir.tmp <- paste0(dir.tmp,c("tmp_gram_pos","tmp_gram_neg","tmp_arc","tmp_euk")) #temporary files for each organism in sigalp
+  
+  n.accession <- length(accession.list)
+  for(i in 1:n.accession) {
+    
+    if (!file.exists(inpath.list[i])){
+      warning(sprintf("The amino acid fasta file for: '%s' is missing.",accession.list[i]))
+      next
+    }
+    
+    cmd.signalp_gram_pos <- sprintf("signalp -fasta %s -org gram+ -format short -prefix %s",
+                                    inpath.list[i],
+                                    outdir.tmp[1])
+    cmd.signalp_gram_neg <- sprintf("signalp -fasta %s -org gram- -format short -prefix %s",
+                                    inpath.list[i],
+                                    outdir.tmp[2])
+    cmd.signalp_gram_arc <- sprintf("signalp -fasta %s -org arch -format short -prefix %s",
+                                    inpath.list[i],
+                                    outdir.tmp[3])
+    cmd.signalp_gram_euk <- sprintf("signalp -fasta %s -org euk -format short -prefix %s",
+                                    inpath.list[i],
+                                    outdir.tmp[4])
+    
+    system(cmd.signalp_gram_pos)
+    system(cmd.signalp_gram_neg)
+    system(cmd.signalp_gram_arc)
+    system(cmd.signalp_gram_euk)
+  }
+  
+  unlink(dir.tmp,recursive = TRUE)
 }
