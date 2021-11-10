@@ -1,89 +1,62 @@
-#create standardized directory architecture for metagenome analysis
-create_all_subdirectories <- function(override=FALSE){
+create_subdirectories <- function(base.layer="fastq.raw",override=FALSE){
+  
+  if (!base.layer %in% c("fastq.raw","fastq.trim","sequence","genes","hmm","database")){
+    stop("The specified base.layer value is not an option.\n\nPlease select from: fastq.raw, fastq.trim, sequence, genes, hmm, or database.")
+  }
   
   if (override == TRUE){
     unlink("data/sequence",recursive = TRUE)
   }
-  
+  create <- FALSE
   dir.fastq.raw <- "data/sequence/fastq/raw/"
   dir.fastq.trim <- "data/sequence/fastq/trimmed/"
-  dir.assembly <- "data/sequence/assemblies/"
+  dir.sequence <- "data/sequence/sequences/"
   dir.genes.aa <- "data/sequence/genes/aa/"
   dir.genes.nuc <- "data/sequence/genes/nuc/"
   dir.genes.gff <- "data/sequence/genes/gff/"
   dir.annotation.hmm <- "data/sequence/annotation/hmm/"
   dir.database <- "data/database/"
   
-  if (!dir.exists(dir.fastq.raw)){
+  warning('If not using fastq-dump, genomic data will need to be manually added to whatever the user-defined base layer is.')
+  
+  if ((!dir.exists(dir.fastq.raw) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "fastq.raw")){
+    create <- TRUE
     dir.create(dir.fastq.raw,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.fastq.trim)){
+  if ((!dir.exists(dir.fastq.trim) & create == TRUE) | (!dir.exists(dir.fastq.trim) & base.layer %in% "fastq.trim")){
+    create <- TRUE
     dir.create(dir.fastq.trim,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.assembly)){
-    dir.create(dir.assembly,recursive = TRUE)
+  if ((!dir.exists(dir.sequence) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "sequence")){
+    create <- TRUE
+    dir.create(dir.sequence,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.genes.aa)){
+  if ((!dir.exists(dir.genes.aa) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
+    create <- TRUE
     dir.create(dir.genes.aa,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.genes.nuc)){
+  if ((!dir.exists(dir.genes.nuc) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
+    create <- TRUE
     dir.create(dir.genes.nuc,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.genes.gff)){
+  if ((!dir.exists(dir.genes.gff) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
+    create <- TRUE
     dir.create(dir.genes.gff,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.annotation.hmm)){
+  if ((!dir.exists(dir.annotation.hmm) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "hmm")){
+    create <- TRUE
     dir.create(dir.annotation.hmm,recursive = TRUE)
   }
   
-  if (!dir.exists(dir.database)){
+  if ((!dir.exists(dir.database) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "database")){
+    create <- TRUE
     dir.create(dir.database,recursive = TRUE)
-    warning('Files for constructing databases will need to be manually added to this directory if this is where you want to store them...')
-  }
-}
-
-#create standardized directory architecture for metagenome analysis
-create_some_subdirectories <- function(override=FALSE){
-  
-  if (override == TRUE){
-    unlink("data/sequence",recursive = TRUE)
-  }
-  
-  dir.fastq.raw <- "data/sequence/fastq/raw/"
-  dir.fastq.trim <- "data/sequence/fastq/trimmed/"
-  dir.assembly <- "data/sequence/assemblies/"
-  dir.genes.aa <- "data/sequence/genes/aa/"
-  dir.genes.nuc <- "data/sequence/genes/nuc/"
-  dir.genes.gff <- "data/sequence/genes/gff/"
-  
-  if (!dir.exists(dir.fastq.raw)){
-    dir.create(dir.fastq.raw,recursive = TRUE)
-  }
-  
-  if (!dir.exists(dir.fastq.trim)){
-    dir.create(dir.fastq.trim,recursive = TRUE)
-  }
-  
-  if (!dir.exists(dir.assembly)){
-    dir.create(dir.assembly,recursive = TRUE)
-  }
-  
-  if (!dir.exists(dir.genes.aa)){
-    dir.create(dir.genes.aa,recursive = TRUE)
-  }
-  
-  if (!dir.exists(dir.genes.nuc)){
-    dir.create(dir.genes.nuc,recursive = TRUE)
-  }
-  
-  if (!dir.exists(dir.genes.gff)){
-    dir.create(dir.genes.gff,recursive = TRUE)
   }
 }
 
@@ -251,7 +224,8 @@ make_database <- function(file,fun='hmmpress',type='prot') {
   
 }
 
-#annotate genes with hmmscan
+#hmmscan
+#annotate genes
 annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
@@ -269,7 +243,7 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
-
+    
     if (!file.exists(inpath.list[i])){
       warning(sprintf("The amino acid fasta file for: '%s' is missing.",accession.list[i]))
       next
@@ -281,9 +255,32 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
                            evalue,
                            db,
                            inpath.list[i])
-    invisible(system(cmd.hmmscan)) #I make the terminal output invisible because it slows the code down too much
+    system(cmd.hmmscan) #can't suppress terminal output from hmmscan
   }
   
   
 }
 
+
+dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
+  
+  annotate_hmmscan(accession.list, db, hmm.cores, evalue)
+  
+  hmm.parser <- './scripts/bash/hmmscan-parser.sh'
+  if (!file.exists(hmm.parser)){
+    stop('This function uses a parsing file published for dbCAN. The filepath for this script should be ./scripts/bash/hmm-parser.sh\n\nThis script can be downloaded from: https://bcb.unl.edu/dbCAN2/download/Databases/V10/hmmscan-parser.sh\n\nNote, this verion corresponds to dbCAN v10')
+  }
+  
+  dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
+  inpath.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'.tsv')
+  outpath.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'_parsed','.tsv')
+  
+  n.accession <- length(accession.list)
+  for(i in 1:n.accession) {
+    
+    cmd.clean.dbcan <- sprintf("bash %s > %s",inpath.list[i],outpath.list[i])
+    
+    system(cmd.clean.dbcan)
+  }
+  
+}
