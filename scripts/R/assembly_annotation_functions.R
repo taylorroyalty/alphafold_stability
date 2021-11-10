@@ -1,24 +1,30 @@
 #create standardized directory format for downstream processing.
-create_subdirectories <- function(base.layer="fastq.raw",override=FALSE){
+create_subdirectories <- function(base.layer="all",override=FALSE){
   
-  if (!base.layer %in% c("fastq.raw","fastq.trim","sequence","genes","hmm","database")){
+  if (!base.layer %in% c("all","fastq.raw","fastq.trim","sequence","genes","hmm","database")){
     stop("The specified base.layer value is not an option.\n\nPlease select from: fastq.raw, fastq.trim, sequence, genes, hmm, or database.")
   }
   
   if (override == TRUE){
     unlink("data/sequence",recursive = TRUE)
   }
-  create <- FALSE
+  
+  if (base.layer %in% "all"){
+    create <- TRUE 
+  } else {
+    create <- FALSE
+  }
+  
   dir.fastq.raw <- "data/sequence/fastq/raw/"
   dir.fastq.trim <- "data/sequence/fastq/trimmed/"
   dir.sequence <- "data/sequence/sequences/"
   dir.genes.aa <- "data/sequence/genes/aa/"
+  dir.intracellular <- "data/sequence/genes/aa/signalp/intracellular/"
+  dir.extracellular <- "data/sequence/genes/aa/signalp/extracellular/"
   dir.genes.nuc <- "data/sequence/genes/nuc/"
   dir.genes.gff <- "data/sequence/genes/gff/"
   dir.annotation.hmm <- "data/sequence/annotation/hmm/"
   dir.database <- "data/database/"
-  dir.intracellular <- "data/sequence/genes/aa/signalp/intracellular/"
-  dir.extracellular <- "data/sequence/genes/aa/signalp/extracellular/"
   
   warning('If not using fastq-dump, genomic data will need to be manually added to whatever the user-defined base layer is.')
   
@@ -293,7 +299,7 @@ dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
 #signalp v5.0 
 #identifies putative signal peptides and provides the option to cleave at predicted cleavage sites
 #Note that signalp is stored in the local /usr/local/bin and is in PATH. 
-filter_signal_peptide <- function(accession.list, cleave = FALSE){
+filter_signal_peptide <- function(accession.list, dir.gene.list="", pattern="",annotated = TRUE, cleave = FALSE, index=1, header.len=0){
   
   dir.extracellular <- "./data/sequence/genes/aa/signalp/extracellular/"
   dir.intracellular <- "./data/sequence/genes/aa/signalp/intracellular/"
@@ -306,8 +312,6 @@ filter_signal_peptide <- function(accession.list, cleave = FALSE){
     stop("The output directory for amino acid fasta files does not exist or has no files.")
   }
   
-  inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
-  outdir.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'.tsv')
   
   #make a temporary directory to house all temporary files generated from signalp
   dir.tmp <- "./data/sequence/genes/aa/signalp/tmp/"
@@ -315,8 +319,41 @@ filter_signal_peptide <- function(accession.list, cleave = FALSE){
   dir.create(dir.tmp,recursive = TRUE)
   outdir.tmp <- paste0(dir.tmp,c("tmp_gram_pos","tmp_gram_neg","tmp_arc","tmp_euk")) #temporary files for each organism in sigalp
   
+  if (dir.gene.list %in% ""){
+    inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
+  } else{
+    gene.list <- paste0(dir.gene.list,accession.list,pattern)
+    fasta.list <- paste0(dir.genes.aa,accession.list,".faa")
+    dir.short.fasta <- paste0(dir.tmp,accession.list,"_short.faa")
+    tmp.list <- paste0(dir.tmp,"tmp_list.txt")
+  }
+  
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
+    
+    if (header.len > 0){
+      #currently this functionality does not work--issues relate to if file is delimited by an inconsistent number of spaces. Really, these should be processed elsewhere. 
+      cmd.gene.list <- sprintf("sed '1,%sd' %s cut -f %s {} > %s",
+                               header.len,
+                               gene.list[i],
+                               index,
+                               tmp.list)
+      system(cmd.gene.list)
+      
+    } else {
+      
+      cmd.gene.list <- sprintf("cut -f %s %s > %s",
+                               index,
+                               gene.list[i],
+                               tmp.list)
+      system(cmd.gene.list)
+    }
+    
+    cmd.extract <- sprintf("seqtk subseq %s %s > %s",
+                           fasta.list[i],
+                           tmp.list,
+                           dir.short.fasta[i])
+    system(cmd.extract)
     
     if (!file.exists(inpath.list[i])){
       warning(sprintf("The amino acid fasta file for: '%s' is missing.",accession.list[i]))
