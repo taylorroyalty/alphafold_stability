@@ -336,7 +336,7 @@ dbcan_annotation <- function(accession.list, dir.genes.aa="", dir.annotation.hmm
 #signalp v5.0 
 #identifies putative signal peptides and provides the option to cleave at predicted cleavage sites
 #Note that signalp is stored in the local /usr/local/bin and is in the usr PATH (for marie). 
-filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracellular="", dir.intracellular="", dir.tmp="", faa_ex=".faa", cleave = FALSE){
+filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracellular="", dir.intracellular="", dir.signalp="", dir.tmp="", faa_ex=".faa", cleave = FALSE){
   
   if (dir.extracellular %in% ""){
     dir.extracellular <- "./data/sequence/genes/aa/signalp/extracellular/"
@@ -359,6 +359,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
   }
   
   
+  
   #make a temporary directory to house all temporary files generated from signalp
   if (dir.tmp %in% ""){
     dir.tmp <- "./data/sequence/genes/aa/signalp/tmp/"
@@ -368,7 +369,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
   dir.create(dir.tmp,recursive = TRUE)
   outdir.tmp <- paste0(dir.tmp,c("tmp_gram_pos","tmp_gram_neg","tmp_arc","tmp_euk")) #temporary files for each organism in sigalp
   
-  inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
+  inpath.list <- paste0(dir.genes.aa,accession.list,faa_ex)
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
@@ -386,16 +387,40 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
                                     inpath.list[i],
                                     outdir.tmp[4])
     
-    system(cmd.signalp_gram_pos)
-    system(cmd.signalp_gram_neg)
-    system(cmd.signalp_gram_arc)
-    system(cmd.signalp_gram_euk)
+    cmd.signalp_all <- c(cmd.signalp_gram_pos,cmd.signalp_gram_neg, cmd.signalp_gram_arc, cmd.signalp_gram_euk)
+    
+    result.tmp <- data.frame(NULL)
+    for (j in 1:4){
+      system(cmd.signalp_all[j])
+      result.path.tmp <- paste0(outdir.tmp[j],"_summary.signalp5")
+      result.tmp <- read.table(result.path.tmp,skip=2, sep = '\t') %>%
+        filter(!V2 %in% "OTHER") %>%
+        select(-V2) %>%
+        group_by(V1) %>%
+        pivot_longer(cols=-c(names(.)[1],tail(names(.),1)),names_to = "type",values_to = "prob") %>%
+        filter(prob == max(prob)) %>%
+        distinct() %>%
+        select(-type) %>%
+        rename(gene=V1,cleavage=names(.)[2]) %>%
+        ungroup() %>%
+        rbind(result.tmp)
+    }
+    
+    result.tmp %>%
+      group_by(gene) %>%
+      filter(prob == max(prob)) %>%
+    
+    
+    # system(cmd.signalp_gram_pos)
+    # system(cmd.signalp_gram_neg)
+    # system(cmd.signalp_gram_arc)
+    # system(cmd.signalp_gram_euk)
   }
   
   unlink(dir.tmp,recursive = TRUE)
 }
 
-
+#filters fasta files based on gene lists in a target file. gene lists are to have one gene id per line in target file
 filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, dir.genes.aa="", ex_gene_list, ex_gene=".faa", col=1, header.n=0, sep='\t', min.sep=1, max.sep=1){
   
   if (dir.genes.aa %in% ""){
@@ -419,24 +444,24 @@ filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, dir.genes
   for(i in 1:n.accession) {
     
     if (header.n > 0){
-      cmd.preprocess <- sprintf("sed '1,%sd;",header.n)
+      cmd.preprocess <- sprintf("1,%sd;",header.n)
     } else {
       cmd.preprocess <- sprintf("")
     }
     
     if (max.sep == 1){
-      cmd.preprocess <- sprintf("%ss/%s/\t/g' %s",
+      cmd.preprocess <- sprintf("sed '%ss/%s/\t/g' %s",
                                 cmd.preprocess,
                                 sep,
                                 gene.list[i])
     } else if (is.infinite(max.sep)) {
-      cmd.preprocess <- sprintf("%ss/%s\\{%s,\\}/\t/g' %s",
+      cmd.preprocess <- sprintf("sed '%ss/%s\\{%s,\\}/\t/g' %s",
                                 cmd.preprocess,
                                 sep,
                                 min.sep,
                                 gene.list[i])
     } else {
-      cmd.preprocess <- sprintf("%ss/%s\\{%s,%s\\}/\t/g' %s",
+      cmd.preprocess <- sprintf("sed '%ss/%s\\{%s,%s\\}/\t/g' %s",
                                 cmd.preprocess,
                                 sep,
                                 min.sep,
