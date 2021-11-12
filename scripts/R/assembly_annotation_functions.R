@@ -72,11 +72,14 @@ create_subdirectories <- function(base.layer="all",override=FALSE){
 
 #fastq-dump
 #download sequence short read sequences from NCBI's SRA
-download_SRR <- function(accession.list, numCores=1){
+download_SRR <- function(accession.list, dir.fastq.raw="", numCores=1){
   
   registerDoParallel(numCores)
   
-  dir.fastq.raw <- "./data/sequence/fastq/raw/"
+  if (dir.fastq.raw %in% ""){
+    dir.fastq.raw <- "./data/sequence/fastq/raw/"
+  }
+  
   if (!dir.exists(dir.fastq.raw)){
     stop("The output directory for fastq-dump does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
@@ -90,7 +93,7 @@ download_SRR <- function(accession.list, numCores=1){
 
 #fastp
 #trim and quality control short read sequences
-trim_reads <- function(accession.list, fastp.cores=16){
+trim_reads <- function(accession.list, dir.fastq.trim="", dir.fastq.raw="", fastp.cores=16){
   
   #check to make sure user did exceed fastp's core limit 
   if (fastp.cores > 16){
@@ -98,12 +101,19 @@ trim_reads <- function(accession.list, fastp.cores=16){
     warning('Fastp caps the number of threads at 16.\n\n fastp.cores has been set to 16.')
   }
   
-  dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
+  if (dir.fastq.trim %in% ""){
+    dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
+  }
+  
   if (!dir.exists(dir.fastq.trim)){
     stop("The output directory for trimmomatic does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
-  dir.fastq.raw <- "./data/sequence/fastq/raw/"
+  
+  if (dir.fastq.raw %in% ""){
+    dir.fastq.raw <- "./data/sequence/fastq/raw/"
+  }
+  
   if (!dir.exists(dir.fastq.raw) | (length(list.files(dir.fastq.raw)) == 0 )){
     stop("The directory containing raw short read sequences either does not exist or has no files.")
   }
@@ -129,14 +139,20 @@ trim_reads <- function(accession.list, fastp.cores=16){
 #megahit
 #assembly high quality reads into contigs
 #note this is for paired reads only
-assemble_reads <- function(accession.list, megahit.cores=30, min.contig.length = 1000){
+assemble_reads <- function(accession.list, dir.fastq.trim="", dir.assembly="", megahit.cores=30, min.contig.length = 1000){
   
-  dir.assembly <- "./data/sequence/assemblies/"
+  if (dir.assembly %in% ""){
+    dir.assembly <- "./data/sequence/assemblies/"
+  }
+  
   if (!dir.exists(dir.assembly)){
     stop("The output directory for megahit does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
-  dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
+  if (dir.fastq.trim %in% ""){
+    dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
+  }
+  
   if (!dir.exists(dir.fastq.trim) | (length(list.files(dir.fastq.trim)) == 0 )){
     stop("The directory containing raw short read sequences either does not exist or has no files.")
   }
@@ -166,16 +182,28 @@ assemble_reads <- function(accession.list, megahit.cores=30, min.contig.length =
 #prodigal
 #predict open reading frames; extension corresponds to genome extension. 
 #The default corresponds to the megahit's default extension
-predict_ORFs <- function(accession.list,extension=".contigs.fa"){
+predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.genes.nuc="", dir.genes.gff="", extension=".contigs.fa"){
   
-  dir.genes.aa <- "data/sequence/genes/aa/"
-  dir.genes.nuc <- "data/sequence/genes/nuc/"
-  dir.genes.gff <- "data/sequence/genes/gff/"
+  if (dir.genes.aa %in% ""){
+    dir.genes.aa <- "data/sequence/genes/aa/"
+  }
+  
+  if (dir.genes.nuc %in% ""){
+    dir.genes.nuc <- "data/sequence/genes/nuc/"
+  }
+  
+  if (dir.genes.gff %in% ""){
+    dir.genes.gff <- "data/sequence/genes/gff/"
+  }
+  
   if (!dir.exists(dir.genes.aa) | !dir.exists(dir.genes.nuc) | !dir.exists(dir.genes.gff)){
     stop("The output directory for genes does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
-  dir.assembly <- "./data/sequence/assemblies/"
+  if (dir.assembly %in% ""){
+    dir.assembly <- "./data/sequence/assemblies/"
+  }
+  
   if (!dir.exists(dir.assembly) | (length(list.files(dir.assembly)) == 0 )){
     stop("The directory containing assemblies/genomes either does not exist or has no files.")
   }
@@ -236,14 +264,20 @@ make_database <- function(file,fun='hmmpress',type='prot') {
 
 #hmmscan
 #annotate genes
-annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
+annotate_hmmscan <- function(accession.list, dir.genes.aa="", dir.annotation.hmm="", db, hmm.cores=30, evalue=1e-10){
   
-  dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
+  if (dir.annotation.hmm %in% ""){
+    dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
+  }
+  
   if (!dir.exists(dir.annotation.hmm)){
     stop("The output directory for hmm annotations does not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
-  dir.genes.aa <- "./data/sequence/genes/aa/"
+  if (dir.genes.aa %in% ""){
+    dir.genes.aa <- "./data/sequence/genes/aa/"
+  }
+  
   if (!dir.exists(dir.genes.aa) | (length(list.files(dir.genes.aa)) == 0 )){
     stop("The output directory for amino acid fasta files does not exist or has no files.")
   }
@@ -273,16 +307,19 @@ annotate_hmmscan <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
 
 #uses annotate_hmmscan and applies hmm-parser.sh function on the output as is done on dbcan's server
 #annotate genes
-dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
+dbcan_annotation <- function(accession.list, dir.genes.aa="", dir.annotation.hmm="", db, hmm.cores=30, evalue=1e-10){
   
-  annotate_hmmscan(accession.list, db, hmm.cores, evalue)
+  if (dir.annotation.hmm %in% ""){
+    dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
+  }
+  
+  annotate_hmmscan(accession.list, dir.genes.aa=dir.genes.aa, dir.annotation.hmm=dir.annotation.hmm, db, hmm.cores, evalue)
   
   hmm.parser <- './scripts/bash/hmmscan-parser.sh'
   if (!file.exists(hmm.parser)){
     stop('This function uses a parsing file published for dbCAN. The filepath for this script should be ./scripts/bash/hmm-parser.sh\n\nThis script can be downloaded from: https://bcb.unl.edu/dbCAN2/download/Databases/V10/hmmscan-parser.sh\n\nNote, this verion corresponds to dbCAN v10')
   }
   
-  dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
   inpath.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'.tsv')
   outpath.list <- paste0(dir.annotation.hmm,accession.list,'_',basename(db),'_parsed','.tsv')
   
@@ -298,67 +335,43 @@ dbcan_annotation <- function(accession.list, db, hmm.cores=30, evalue=1e-10){
 
 #signalp v5.0 
 #identifies putative signal peptides and provides the option to cleave at predicted cleavage sites
-#Note that signalp is stored in the local /usr/local/bin and is in PATH. 
-filter_signal_peptide <- function(accession.list, dir.gene.list="", pattern="",annotated = TRUE, cleave = FALSE, index=1, header.len=0){
+#Note that signalp is stored in the local /usr/local/bin and is in the usr PATH (for marie). 
+filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracellular="", dir.intracellular="", dir.tmp="", faa_ex=".faa", cleave = FALSE){
   
-  dir.extracellular <- "./data/sequence/genes/aa/signalp/extracellular/"
-  dir.intracellular <- "./data/sequence/genes/aa/signalp/intracellular/"
+  if (dir.extracellular %in% ""){
+    dir.extracellular <- "./data/sequence/genes/aa/signalp/extracellular/"
+  }
+  
+  if (dir.intracellular %in% ""){
+    dir.intracellular <- "./data/sequence/genes/aa/signalp/intracellular/"
+  }
+  
   if (!dir.exists(dir.extracellular) | !dir.exists(dir.intracellular)){
     stop("The output directories for signalp do not exist.\n\nConsider executing the create_subdirectories function first.")
   }
   
-  dir.genes.aa <- "./data/sequence/genes/aa/"
+  if (dir.genes.aa %in% ""){
+    dir.genes.aa <- "./data/sequence/genes/aa/"
+  }
+  
   if (!dir.exists(dir.genes.aa) | (length(list.files(dir.genes.aa)) == 0 )){
     stop("The output directory for amino acid fasta files does not exist or has no files.")
   }
   
   
   #make a temporary directory to house all temporary files generated from signalp
-  dir.tmp <- "./data/sequence/genes/aa/signalp/tmp/"
+  if (dir.tmp %in% ""){
+    dir.tmp <- "./data/sequence/genes/aa/signalp/tmp/"
+  }
+  
   unlink(dir.tmp,recursive = TRUE)
   dir.create(dir.tmp,recursive = TRUE)
   outdir.tmp <- paste0(dir.tmp,c("tmp_gram_pos","tmp_gram_neg","tmp_arc","tmp_euk")) #temporary files for each organism in sigalp
   
-  if (dir.gene.list %in% ""){
-    inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
-  } else{
-    gene.list <- paste0(dir.gene.list,accession.list,pattern)
-    fasta.list <- paste0(dir.genes.aa,accession.list,".faa")
-    dir.short.fasta <- paste0(dir.tmp,accession.list,"_short.faa")
-    tmp.list <- paste0(dir.tmp,"tmp_list.txt")
-  }
+  inpath.list <- paste0(dir.genes.aa,accession.list,".faa")
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
-    
-    if (header.len > 0){
-      #currently this functionality does not work--issues relate to if file is delimited by an inconsistent number of spaces. Really, these should be processed elsewhere. 
-      cmd.gene.list <- sprintf("sed '1,%sd' %s cut -f %s {} > %s",
-                               header.len,
-                               gene.list[i],
-                               index,
-                               tmp.list)
-      system(cmd.gene.list)
-      
-    } else {
-      
-      cmd.gene.list <- sprintf("cut -f %s %s > %s",
-                               index,
-                               gene.list[i],
-                               tmp.list)
-      system(cmd.gene.list)
-    }
-    
-    cmd.extract <- sprintf("seqtk subseq %s %s > %s",
-                           fasta.list[i],
-                           tmp.list,
-                           dir.short.fasta[i])
-    system(cmd.extract)
-    
-    if (!file.exists(inpath.list[i])){
-      warning(sprintf("The amino acid fasta file for: '%s' is missing.",accession.list[i]))
-      next
-    }
     
     cmd.signalp_gram_pos <- sprintf("signalp -fasta %s -org gram+ -format short -prefix %s",
                                     inpath.list[i],
@@ -380,4 +393,71 @@ filter_signal_peptide <- function(accession.list, dir.gene.list="", pattern="",a
   }
   
   unlink(dir.tmp,recursive = TRUE)
+}
+
+
+filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, dir.genes.aa="", ex_gene_list, ex_gene=".faa", col=1, header.n=0, sep='\t', min.sep=1, max.sep=1){
+  
+  if (dir.genes.aa %in% ""){
+    dir.genes.aa <- "./data/sequence/genes/aa/"
+  }
+  
+  if (!dir.exists(dir.genes.aa) | (length(list.files(dir.genes.aa)) == 0 )){
+    stop("The amino acid fasta file directory does not exist or has no files.")
+  }
+  
+  if (!dir.exists(dir.gene.list) | (length(list.files(dir.gene.list)) == 0 )){
+    stop("The gene list directory does not exist or has no files.")
+  }
+  
+  inpath.list <- paste0(dir.genes.aa,accession.list,ex_gene)
+  gene.list <- paste0(dir.gene.list,accession.list,ex_gene_list)
+  outpath.list <- paste0(dir.genes.aa,accession.list,"_filtered",ex_gene)
+  tmp.list <- paste0(dir.gene.list,"tmp_list.txt")
+  
+  n.accession <- length(accession.list)
+  for(i in 1:n.accession) {
+    
+    if (header.n > 0){
+      cmd.preprocess <- sprintf("sed '1,%sd;",header.n)
+    } else {
+      cmd.preprocess <- sprintf("")
+    }
+    
+    if (max.sep == 1){
+      cmd.preprocess <- sprintf("%ss/%s/\t/g' %s",
+                                cmd.preprocess,
+                                sep,
+                                gene.list[i])
+    } else if (is.infinite(max.sep)) {
+      cmd.preprocess <- sprintf("%ss/%s\\{%s,\\}/\t/g' %s",
+                                cmd.preprocess,
+                                sep,
+                                min.sep,
+                                gene.list[i])
+    } else {
+      cmd.preprocess <- sprintf("%ss/%s\\{%s,%s\\}/\t/g' %s",
+                                cmd.preprocess,
+                                sep,
+                                min.sep,
+                                max.sep,
+                                gene.list[i])
+    }
+    
+    cmd.preprocess <- sprintf("%s | cut -f %s > %s",
+                              cmd.preprocess,
+                              col,
+                              tmp.list)
+    
+    system(cmd.preprocess)
+    
+    cmd.extract <- sprintf("seqtk subseq %s %s > %s",
+                           inpath.list[i],
+                           tmp.list,
+                           outpath.list[i])
+    
+    system(cmd.extract)
+  }
+  
+  unlink(tmp.list)
 }

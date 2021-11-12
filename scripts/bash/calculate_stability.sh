@@ -10,8 +10,8 @@ proj_dir=/home/troyalty/Documents/projects/alphafold_stability #project director
 depth_chemistry=/home/troyalty/Documents/projects/alphafold_stability/data/M0059E/geochemistry/chemistry_for_stability_predictions_0m_16m.tsv #chemistry file containing ionic strength, temperature, pH
 foldx_path=/home/troyalty/Software/foldx/foldx #filepath to foldx software
 tmp_path=$proj_dir/tmp #a temporary directory for intermediate files
-foldx_results_path=$proj_dir/data/M0059E/foldx #filepath for stability results
-alphafold_results_path=$proj_dir/data/M0059E/alphafold_results #filepath containing alphafold predictions (pdb files)
+foldx_results_path=$proj_dir/data/M0059E/foldx_GH29 #filepath for stability results
+alphafold_results_path=$proj_dir/data/M0059E/alphafold_results_GH29 #filepath containing alphafold predictions (pdb files)
 
 pdb_alphafold_path=$alphafold_results_path/pdb/
 
