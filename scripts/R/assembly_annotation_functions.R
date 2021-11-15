@@ -264,7 +264,7 @@ make_database <- function(file,fun='hmmpress',type='prot') {
 
 #hmmscan
 #annotate genes
-annotate_hmmscan <- function(accession.list, dir.genes.aa="", dir.annotation.hmm="", db, hmm.cores=30, evalue=1e-10){
+annotate_hmmscan <- function(accession.list, dir.genes.aa="", dir.annotation.hmm="", db, top.hit = TRUE, hmm.cores=30, evalue=1e-10){
   
   if (dir.annotation.hmm %in% ""){
     dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
@@ -300,6 +300,7 @@ annotate_hmmscan <- function(accession.list, dir.genes.aa="", dir.annotation.hmm
                            db,
                            inpath.list[i])
     system(cmd.hmmscan) #can't suppress terminal output from hmmscan
+
   }
   
   
@@ -329,6 +330,13 @@ dbcan_annotation <- function(accession.list, dir.genes.aa="", dir.annotation.hmm
     cmd.clean.dbcan <- sprintf("bash %s %s > %s",hmm.parser,inpath.list[i],outpath.list[i])
     
     system(cmd.clean.dbcan)
+    
+    #here I filter for the annotation with the lowest evalue--in some cases a gene is annotated multiple times with either different annotations or the same annotation but shifted AA frames
+    read.table(outpath.list[i], sep='\t') %>%
+      group_by(V3) %>%
+      filter(V5 == min(V5)) %>%
+      write.table(file=outpath.list[i],sep='\t',quote = FALSE, row.names = FALSE, col.names = FALSE)
+    
   }
   
 }
@@ -336,7 +344,7 @@ dbcan_annotation <- function(accession.list, dir.genes.aa="", dir.annotation.hmm
 #signalp v5.0 
 #identifies putative signal peptides and provides the option to cleave at predicted cleavage sites
 #Note that signalp is stored in the local /usr/local/bin and is in the usr PATH (for marie). 
-filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracellular="", dir.intracellular="", dir.signalp="", dir.tmp="", faa_ex=".faa", cleave = FALSE){
+filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracellular="", dir.intracellular="", dir.signalp="", faa_ex=".faa", cleave = FALSE){
   
   if (dir.extracellular %in% ""){
     dir.extracellular <- "./data/sequence/genes/aa/signalp/extracellular/"
@@ -361,39 +369,43 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
   
   
   #make a temporary directory to house all temporary files generated from signalp
-  if (dir.tmp %in% ""){
-    dir.tmp <- "./data/sequence/genes/aa/signalp/tmp/"
+  if (dir.signalp %in% ""){
+    dir.signalp <- "./data/sequence/genes/aa/signalp/signalp/"
   }
   
   unlink(dir.tmp,recursive = TRUE)
-  dir.create(dir.tmp,recursive = TRUE)
-  outdir.tmp <- paste0(dir.tmp,c("tmp_gram_pos","tmp_gram_neg","tmp_arc","tmp_euk")) #temporary files for each organism in sigalp
+  dir.create(dir.signalp,recursive = TRUE)
+  outdir.tmp <- paste0(dir.signalp,accession.list) #temporary files for each organism in sigalp
   
   inpath.list <- paste0(dir.genes.aa,accession.list,faa_ex)
+  outpath_ex.list <- paste0(dir.extracellular,accession.list,"_extracellular",faa_ex)
+  outpath_in.list <- paste0(dir.intracellular,accession.list,"_intracellular",faa_ex)
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
     
+    outpath.list <- paste0(outdir.tmp[i],c("_gram_pos","_gram_neg","_arc","_euk"))
+    
     cmd.signalp_gram_pos <- sprintf("signalp -fasta %s -org gram+ -format short -prefix %s",
                                     inpath.list[i],
-                                    outdir.tmp[1])
+                                    outpath.list[1])
     cmd.signalp_gram_neg <- sprintf("signalp -fasta %s -org gram- -format short -prefix %s",
                                     inpath.list[i],
-                                    outdir.tmp[2])
+                                    outpath.list[2])
     cmd.signalp_gram_arc <- sprintf("signalp -fasta %s -org arch -format short -prefix %s",
                                     inpath.list[i],
-                                    outdir.tmp[3])
+                                    outpath.list[3])
     cmd.signalp_gram_euk <- sprintf("signalp -fasta %s -org euk -format short -prefix %s",
                                     inpath.list[i],
-                                    outdir.tmp[4])
+                                    outpath.list[4])
     
-    cmd.signalp_all <- c(cmd.signalp_gram_pos,cmd.signalp_gram_neg, cmd.signalp_gram_arc, cmd.signalp_gram_euk)
+    cmd.signalp_all <- c(cmd.signalp_gram_pos, cmd.signalp_gram_neg, cmd.signalp_gram_arc, cmd.signalp_gram_euk)
     
-    result.tmp <- data.frame(NULL)
+    result.ex <- data.frame(NULL)
     for (j in 1:4){
       system(cmd.signalp_all[j])
-      result.path.tmp <- paste0(outdir.tmp[j],"_summary.signalp5")
-      result.tmp <- read.table(result.path.tmp,skip=2, sep = '\t') %>%
+      result.path.tmp <- paste0(outpath.list[j],"_summary.signalp5")
+      result.ex <- read.table(result.path.tmp,skip=2, sep = '\t') %>%
         filter(!V2 %in% "OTHER") %>%
         select(-V2) %>%
         group_by(V1) %>%
@@ -403,18 +415,55 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
         select(-type) %>%
         rename(gene=V1,cleavage=names(.)[2]) %>%
         ungroup() %>%
-        rbind(result.tmp)
+        rbind(result.ex)
+      
     }
     
-    result.tmp %>%
+    #partition into extracellular and intracellular gene lists
+    result.ex<-result.ex %>%
       group_by(gene) %>%
       filter(prob == max(prob)) %>%
+      distinct() %>%
+      mutate(cleavage=as.numeric(substr(cleavage,9,10)))
     
+    result.ex$cleavage[is.na(result.ex$cleavage)]<-0
     
-    # system(cmd.signalp_gram_pos)
-    # system(cmd.signalp_gram_neg)
-    # system(cmd.signalp_gram_arc)
-    # system(cmd.signalp_gram_euk)
+    result.in <- read.table(result.path.tmp,skip=2, sep = '\t') %>%
+      select(V1) %>%
+      filter(!V1 %in% result.ex$gene) %>%
+      distinct() %>%
+      cbind(cleavage=0)
+    
+    #overwrite faa files if they exists
+    system(sprintf("> %s",outpath_ex.list[i]))
+    system(sprintf("> %s",outpath_in.list[i]))
+    
+    #build command for isolating seq--if cleave true, use sed to trucate sequences 
+    cmd.cleave <- c("grep -A 1 %s %s | sed '2s/^.\\{%s\\}//' >> %s")
+    if (cleave == FALSE) {
+      result.ex$cleavage <- result.ex$cleavage*0  
+    }
+    
+    for (seq in 1:nrow(result.ex)){
+      cmd.isolate.ex <- sprintf(cmd.cleave,
+                            result.ex$gene[seq],
+                            inpath.list[i],
+                            result.ex$cleavage[seq],
+                            outpath_ex.list[i])
+      
+      system(cmd.isolate.ex)
+    }
+    
+    for (seq in 1:nrow(result.in)){
+      cmd.isolate.in <- sprintf(cmd.cleave,
+                                result.in$V1[seq],
+                                inpath.list[i],
+                                result.in$cleavage[seq],
+                                outpath_in.list[i])
+      
+      system(cmd.isolate.in)
+    }
+
   }
   
   unlink(dir.tmp,recursive = TRUE)

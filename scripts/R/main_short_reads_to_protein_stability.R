@@ -35,4 +35,10 @@ predict_ORFs(accession.list)
 make_database(dbcan.db)
 
 #annotate genes with dbcan annotations
-annotate_hmmscan(accession.list = accession.list, dbcan.db)
+dbcan_annotation(accession.list=accession.list, db=dbcan.db)
+
+#filter and isolate genes annotated with dbcan annotations  
+filter_fasta_with_gene_list(accession.list = accession.list, dir.gene.list = "data/sequence/annotation/hmm/", ex_gene_list = "_dbCAN-HMMdb-V10.txt_parsed.tsv", col = 3)
+
+#separate dbCAN-positive annotations in signal peptide-positive and negative sequences--cleave signal peptide
+filter_signal_peptide(accession.list = accession.list, faa_ex="_filtered.faa", cleave = TRUE)
