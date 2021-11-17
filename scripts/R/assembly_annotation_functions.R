@@ -23,6 +23,7 @@ create_subdirectories <- function(base.layer="all",override=FALSE){
   dir.extracellular <- "data/sequence/genes/aa/signalp/extracellular/"
   dir.genes.nuc <- "data/sequence/genes/nuc/"
   dir.genes.gff <- "data/sequence/genes/gff/"
+  dir.genes.abundance <- "data/sequence/genes/abundance/"
   dir.annotation.hmm <- "data/sequence/annotation/hmm/"
   dir.database <- "data/database/"
   
@@ -57,6 +58,11 @@ create_subdirectories <- function(base.layer="all",override=FALSE){
   if ((!dir.exists(dir.genes.gff) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
     create <- TRUE
     dir.create(dir.genes.gff,recursive = TRUE)
+  }
+  
+  if ((!dir.exists(dir.genes.abundance) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "genes")){
+    create <- TRUE
+    dir.create(dir.genes.abundance,recursive = TRUE)
   }
   
   if ((!dir.exists(dir.annotation.hmm) & create == TRUE) | (!dir.exists(dir.fastq.raw) & base.layer %in% "hmm")){
@@ -300,7 +306,7 @@ annotate_hmmscan <- function(accession.list, dir.genes.aa="", dir.annotation.hmm
                            db,
                            inpath.list[i])
     system(cmd.hmmscan) #can't suppress terminal output from hmmscan
-
+    
   }
   
   
@@ -446,10 +452,10 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     
     for (seq in 1:nrow(result.ex)){
       cmd.isolate.ex <- sprintf(cmd.cleave,
-                            result.ex$gene[seq],
-                            inpath.list[i],
-                            result.ex$cleavage[seq],
-                            outpath_ex.list[i])
+                                result.ex$gene[seq],
+                                inpath.list[i],
+                                result.ex$cleavage[seq],
+                                outpath_ex.list[i])
       
       system(cmd.isolate.ex)
     }
@@ -463,7 +469,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
       
       system(cmd.isolate.in)
     }
-
+    
   }
   
   unlink(dir.tmp,recursive = TRUE)
@@ -535,3 +541,114 @@ filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, dir.genes
   
   unlink(tmp.list)
 }
+
+#bowtie2; samtools
+#align short-reads to target genes
+align_short_reads <- function(accession.list, dir.genes.abundance="", dir.genes.nuc="", dir.fastq.trim="", ex_gene=".fna", align.cpu=30){
+  
+  if (dir.genes.nuc %in% ""){
+    dir.genes.nuc <- "data/sequence/genes/nuc/"
+  }
+  
+  if (dir.fastq.trim %in% ""){
+    dir.fastq.trim <- "./data/sequence/fastq/trimmed/"
+  }
+  
+  if (dir.genes.abundance %in% ""){
+    dir.genes.abundance <- "./data/sequence/genes/abundance/"
+  }
+  
+  inpath.fastq.list <- paste0(dir.fastq.trim,accession.list)
+  inpath.gene.nuc.list <- paste0(dir.genes.nuc,accession.list,ex_gene)
+  outpath.index.list <- paste0(dir.genes.abundance)
+  outpath.sam.list <- paste0(dir.genes.abundance,".sam")
+  
+  n.accession <- length(accession.list)
+  for(i in 1:n.accession) {
+    cmd.bw2.build<-sprintf("bowtie2-build -f %s %s --threads %s",
+                           inpath.gene.nuc.list[i],
+                           outpath.index.list[i],
+                           align.cpu)
+  }
+  
+  "grep -v '#' %s | grep 'ID=' | cut -f1 -d ';' | sed 's/ID=//g' | cut -f1,4,5,7,9 |  awk -v OFS='\t' '{print $1,\"PROKKA\",\"CDS\",$2,$3,\".\",$4,\".\",\"gene_id \" $5}'"
+  
+  "bowtie2-build -f $seqfile $mapdir$basename --threads 30"
+  "bowtie2 -x $mapdir$basename -1 $fastqdir$line$fP_ex -2 $fastqdir$line$bP_ex -S $mapdir$line$sam_ex -p 30"
+  
+  "samtools view -@ 30 -bS $mapdir$line$sam_ex | samtools sort -@ 30 -o $mapdir$line$bam_sort_ex"
+  
+  
+}
+
+null_sequence <- function(filepath,seq.len,rep=1,w=c(),alphabet=c("A","R","N","D","C","Q","E","G","H","I","L","K","M","F","P","S","T","W","Y","V")){
+  
+  if (!dir.exists(dirname(filepath))){ 
+    dir.create(dirname(filepath),recursive = TRUE)
+  }
+  
+  if (is.null(w)){
+    #weights correspond to AA frequencies reported in swiss prot 2021_03 https://web.expasy.org/docs/relnotes/relstat.html
+    w=c(0.0825,0.0553,0.0406,0.0546,0.0138,0.0393,0.0672,0.0707,0.0227,0.0591,0.0965,0.0580,0.0241,0.0386,0.0473,0.0664,0.0535,0.0110,0.0292,0.0686)
+    w=w/sum(w) #this deals with precision errors from swiss prot / small presence of Alx, Glx, Xaa
+  } 
+  
+  if (!sum(w)==1){
+    stop("The sum of the weight vector needs to equal 1.\n\nIf precision is an issue try: w=w/sum(w)")
+  }
+  
+  if (!length(w)==length(alphabet)){
+    stop("The weight vector is not the same length as the alphabet")
+  }
+  
+  system(sprintf("> %s",filepath))
+  
+  null_sequence.subfun <- function(index,filepath,seq.len,w,alphabet){
+    
+    header<-paste("\\>sequence_",as.character(index),sep="")
+    system(sprintf("echo %s >> %s",header,filepath))
+    
+    system(sprintf("echo %s >> %s",paste(sample(alphabet,seq.len,replace = TRUE,prob=w),collapse = ""),filepath))
+  }
+  
+  rep.vec=1:rep
+  
+  for (l in seq.len){
+    sapply(rep.vec,null_sequence.subfun,filepath=filepath,seq.len=l,w=w,alphabet=alphabet)
+    rep.vec=rep.vec+3
+  }
+}
+
+
+blastp_query <- function(accession.list, db.path, dir.output="", dir.genes="", genes_ex='.faa', blast.options="", blast.cores=30){
+  
+  warning("Note that this function uses parallelization native to blastp's implementation.\n\nThis is slower than gnu parallel using single threaded blastp on large blast searches.\n\nMy point is that you should use gnu parallel via the shell for large blast searchs...")
+  
+  if (dir.output %in% ""){
+    dir.output <- paste("./data/sequence/blast_results/", basename(db), collapse = "")
+  }
+  
+  if (dir.genes %in% ""){
+    dir.genes <- "./data/sequence/genes/aa/"
+  }
+  
+  if (!dir.exists(dir.output)){
+    dir.create(dirname(dir.output),recursive = TRUE)
+  }
+  
+  inpath.list <- paste0(dir.genes,accession.list,genes_ex)
+  outpath.list <- paste0(dir.output,accession.list,'.blastp')
+  
+  n.accession <- length(accession.list)
+  for(i in 1:n.accession) {
+    cmd.blastp <- sprintf("blastp -query %s -out %s -db %s %s",
+                          inpath.list[i],
+                          outpath.list[i],
+                          db.path,
+                          blast.options)
+    
+    system(cmd.blastp)
+  }
+  
+}
+
