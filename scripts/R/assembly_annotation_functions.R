@@ -605,7 +605,7 @@ null_sequence <- function(filepath,seq.len,rep=1,w=c(),alphabet=c("A","R","N","D
   
   null_sequence.subfun <- function(index,filepath,seq.len,w,alphabet){
     
-    header<-paste("\\>sequence_",as.character(index),sep="")
+    header<-paste("\\>sequence_",as.character(seq.len),"_",as.character(index),sep="")
     system(sprintf("echo %s >> %s",header,filepath))
     
     system(sprintf("echo %s >> %s",paste(sample(alphabet,seq.len,replace = TRUE,prob=w),collapse = ""),filepath))
@@ -615,17 +615,15 @@ null_sequence <- function(filepath,seq.len,rep=1,w=c(),alphabet=c("A","R","N","D
   
   for (l in seq.len){
     sapply(rep.vec,null_sequence.subfun,filepath=filepath,seq.len=l,w=w,alphabet=alphabet)
-    rep.vec=rep.vec+3
   }
 }
-
 
 blastp_query <- function(accession.list, db.path, dir.output="", dir.genes="", genes_ex='.faa', blast.options="", blast.cores=30){
   
   warning("Note that this function uses parallelization native to blastp's implementation.\n\nThis is slower than gnu parallel using single threaded blastp on large blast searches.\n\nMy point is that you should use gnu parallel via the shell for large blast searchs...")
   
   if (dir.output %in% ""){
-    dir.output <- paste("./data/sequence/blast_results/", basename(db), collapse = "")
+    dir.output <- paste("./data/sequence/blast_results/", basename(db.path), collapse = "")
   }
   
   if (dir.genes %in% ""){
@@ -633,7 +631,7 @@ blastp_query <- function(accession.list, db.path, dir.output="", dir.genes="", g
   }
   
   if (!dir.exists(dir.output)){
-    dir.create(dirname(dir.output),recursive = TRUE)
+    dir.create(dir.output,recursive = TRUE)
   }
   
   inpath.list <- paste0(dir.genes,accession.list,genes_ex)
@@ -641,10 +639,11 @@ blastp_query <- function(accession.list, db.path, dir.output="", dir.genes="", g
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
-    cmd.blastp <- sprintf("blastp -query %s -out %s -db %s %s",
+    cmd.blastp <- sprintf("blastp -query %s -out %s -db %s -num_threads %s %s",
                           inpath.list[i],
                           outpath.list[i],
                           db.path,
+                          blast.cores,
                           blast.options)
     
     system(cmd.blastp)
