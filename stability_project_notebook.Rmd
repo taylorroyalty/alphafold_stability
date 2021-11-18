@@ -1,0 +1,293 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+```{r}
+#Append conda environment bin path to PATH
+conda.env.bin.path.assembly_annotation <- "/home/troyalty/Software/bioinformatics/miniconda3/envs/assembly_annotation/bin"
+
+#There seems to be a conflict between bowtie2 and some other installations in assembly_annotation.
+#I created a new conda environment that only contains bowtie2. This isn't the prettiest solution,
+#but seems to work.
+conda.env.bin.path.bowtie2_only <- "/home/troyalty/Software/bioinformatics/miniconda3/envs/bowtie2_only/bin"
+Sys.setenv(PATH = paste(Sys.getenv("PATH"), conda.env.bin.path.assembly_annotation,conda.env.bin.path.bowtie2_only, sep = ":")) 
+
+```
+
+```{r}
+knitr::opts_chunk$set(engine.opts = list(bash = "-l"))
+
+library(tidyverse)
+library(foreach)
+library(doParallel)
+
+source("scripts/R/assembly_annotation_functions.R")
+source("scripts/R/postprocessing_functions.R")
+```
+
+## Preprocessing pipeline 
+
+This pipeline is designed to isolate putative genes from shotgun metagenomic sequence datasets, annotate target genes using dbCAN, and isolate putatively exported proteins. Most functions implement shell commands via subprocesses and require all softwares to be included in the system PATH. In my case, I created a conda environment which includes all the softwares below (with the exception of signalp), and appended that conda environment's bin to my PATH.
+
+The workflow is:
+1) append conda environment bin path to PATH
+2) create standardized directory structure
+3) download short-read datasets from SRA using fastq-dump
+4) quality filter short-reads using fastp
+5) assemble high-quality reads into contigs using megahit
+6) predict putative genes using prodigal
+7) create a hmm database using dbCAN definitions
+8) annotate genes with dbCAN definitions using HMMER
+9) isolate dbCAN-positive genes
+10) separate putative extracellular and intracellular enzymes based on signalp predictions--cleave signal peptides
+
+```{r warning=FALSE}
+accession.list <- c("SRR7066493")
+override <- TRUE
+fastq.dump.cores=2
+megahit.cores=30
+min.contig.length <- 1000
+dbcan.db <- 'data/database/dbCAN-HMMdb-V10.txt'
+
+
+#create standardized directory
+create_sequence_directories(override = override)
+
+#download specified short read datasets
+download_SRR(accession.list = accession.list, 
+             numCores = fastq.dump.cores)
+
+#trim adaptars and drop low quality reads
+trim_reads(accession.list = accession.list)
+
+#assemble short reads into contigs
+assemble_reads(accession.list, 
+               megahit.cores=megahit.cores, 
+               min.contig.length = min.contig.length)
+
+#predict contig ORFs
+predict_ORFs(accession.list)
+
+#make a dbcan database
+make_database(dbcan.db)
+
+#annotate genes with dbcan annotations
+dbcan_annotation(accession.list = accession.list, 
+                 db=dbcan.db)
+
+#filter and isolate genes annotated with dbcan annotations  
+filter_fasta_with_gene_list(accession.list = accession.list, 
+                            dir.gene.list = "data/sequence/annotation/hmm/", 
+                            ex_gene_list = "_dbCAN-HMMdb-V10.txt_parsed.tsv", 
+                            col = 3)
+
+#separate dbCAN-positive annotations in signal peptide-positive and negative sequences--cleave signal peptide
+filter_signal_peptide(accession.list = accession.list, 
+                      faa_ex="_filtered.faa", cleave = TRUE)
+
+```
+
+### Isolate dbCAN Enzymes with Largest Richness
+
+```{r warning=FALSE}
+#sub-sample
+
+dir.hmm.db <- "data/sequence/annotation/hmm/"
+hmm.gene.list <- "_dbCAN-HMMdb-V10.txt_parsed.tsv"
+dir.extracellular<-'data/sequence/genes/aa/signalp/extracellular/'
+dir.blast.output <- 'data/sequence/annotation/blastp/'
+db.path <- 'data/database/'
+target_ex <- "_extracellular_filtered.faa"
+
+blast.options <- "-max_target_seqs 1 -evalue 0.1 -outfmt 6"
+n_sample <- 40
+sample.accession <- "SRR7066493"
+blast.accession.list <- c("SRR7066493")
+hmm.list <- c("GH109.hmm","GH29.hmm")
+blast.cores <- 30
+
+
+
+#create directory for genes that we will predict structures of
+dir.structure <- 'data/sequence/structures/genes'
+dir.create(dir.structure,recursive = TRUE)
+
+#Identify enzyme annotations with greatest richness
+plot_rank_abundance(accession.list,
+                    dir=dir.hmm.db,
+                    ex=hmm.gene.list,
+                    header=FALSE,
+                    name.split="_")
+
+
+#Isolate genes with highest richness
+for (hmm in hmm.list){
+  hmm.ex.tmp=paste0("_",strsplit(hmm,'[.]')[[1]][1],'.faa')
+  
+  filter_fasta_with_gene_list(accession.list,
+                              dir.gene.list=dir.hmm.db,
+                              dir.genes=dir.extracellular,
+                              ex_gene_list=hmm.gene.list,
+                              ex_gene=target_ex,
+                              out_ex=hmm.ex.tmp,
+                              col=3,
+                              apply.grep = TRUE,
+                              grep.filter = hmm)
+  
+  sample_fasta(accession.list = sample.accession, 
+               n = n_sample,
+               gene_ex = hmm.ex.tmp,
+               dir.gene = dir.extracellular)
+  
+  #copy sampled file to data/database to create blast database
+  system(sprintf("cp data/sequence/genes/aa/signalp/extracellular/%s_%s%s %s",
+                 sample.accession,
+                 n_sample,
+                 hmm.ex.tmp,
+                 db.path))
+  
+  #make blast database
+  db.path.tmp=paste0(db.path,sample.accession,"_",as.character(n_sample),hmm.ex.tmp)
+  make_database(file=db.path.tmp,fun = "makeblastdb")
+  
+  
+  #blast other files to find homolog pairings
+  blastp_query(blast.accession.list, 
+               db.path=db.path.tmp,
+               dir.output=dir.blast.output,
+               dir.genes=dir.extracellular,
+               genes_ex=hmm.ex.tmp,
+               blast.options=blast.options, 
+               blast.cores=blast.cores)
+  
+  #move target genes to directory for structure prediction1
+  system(sprintf("mv data/sequence/genes/aa/signalp/extracellular/*_%s%s data/sequence/structures/genes/",
+                 n_sample,
+                 hmm.ex.tmp))
+  
+}
+
+
+```
+
+### Isolate the most abundant dbCAN Enzymes based on short-read mapping 
+
+```{r warning=FALSE}
+
+dir.extracellular <- 'data/sequence/genes/nuc/signalp/extracellular/'
+dir.genes.aa <- "data/sequence/genes/aa/signalp/extracellular/"
+dir.genes.tmp <- 'data/sequence/genes/nuc/signalp/extracellular/tmp/'
+dir.genes.nuc <- 'data/sequence/genes/nuc/'
+ex_gene_list <- 'data/sequence/'
+
+out.ex <- "_extracellular_filtered.fna"
+in.aa.ex <- "_extracellular_filtered.faa"
+in.nuc.ex <- "_filtered.fna"
+accession.list <- c("SRR7066493")
+
+
+
+
+if(dir.exists(dir.extracellular)){
+  unlink(dir.extracellular, recursive = TRUE)
+}
+
+if(dir.exists(dir.gene.tmp)){
+  unlink(dir.gene.tmp, recursive = TRUE)
+}
+
+
+dir.create(dir.structure,recursive = TRUE)
+dir.create(dir.gene.tmp,recursive = TRUE)
+
+for (a in accession.list){
+  aa.tmp <- paste0(dir.genes.aa,a,in.aa.ex)
+  nuc.tmp <- paste0(dir.genes.nuc,a,in.nuc.ex)
+  list.tmp <- paste0(dir.genes.tmp,a,'_list.txt')
+  out.tmp <- paste0(dir.extracellular,a,out.ex)
+  
+  cmd.create.list <- sprintf("grep \"^>\" %s | cut -f 1 -d ' ' | sed 's/>//' > %s",
+                             aa.tmp,
+                             list.tmp)
+  
+  system(cmd.create.list)
+  
+  
+  cmd.extract <- sprintf("seqtk subseq %s %s > %s",
+                         nuc.tmp,
+                         list.tmp,
+                         out.tmp)
+  
+  system(cmd.extract)
+ 
+  
+  
+  align_short_reads(a, 
+                    dir.genes.nuc=dir.extracellular,
+                    ex_gene=out.ex,
+                    align.cpu=30)
+  
+  
+}
+
+unlink(dir.gene.tmp,recursive = TRUE)
+
+```
+
+# Run alphafold2 on isolated genes
+
+
+```{bash echo=FALSE}
+#filepath containing fasta files
+faa_filepath=/home/troyalty/Documents/projects/alphafold_stability/data/sequence/structures/genes/
+#filepath housing alphafold2 run_docker.py script
+alphafold2_script=/home/troyalty/Software/alphafold2_docker/alphafold/docker/run_docker.py
+#directory to output structure results
+output_path=/home/troyalty/Documents/projects/alphafold_stability/data/sequence/structures/
+#a temporary directory for writing temporary fasta files
+tmp_path=/home/troyalty/Documents/projects/alphafold_stability/tmp/
+#directory containing alphafold2 reference data
+reference_data=/srv/data/alphafold/
+
+#this allows for using conda's activate command. Note, that conda's path is added to the PATH in ~/.profile. There is apparently some variability in how
+#rstudio executes .bashrc, .bash_profile, .profile, etc. among different OS. GL
+source activate
+conda activate alphafold_docker
+
+rm -fr $tmp_path 2> /dev/null
+mkdir $tmp_path
+
+rm -fr $output_path 2> /dev/null
+mkdir $output_path
+
+
+#loop through list 
+for f in $faa_filepath; do
+cat $f | while read -r header; do #the while loop iterates through headers and sequences--note this requires the fasta file to be single-line fasta format
+read -r seq #this reads the sequence under the header
+gene_name=$(echo $header | cut -f 1 -d ' ' | cut -f 2 -d '>')
+seq_file=$tmp_path/$gene_name$fa_ex
+
+#alphafold only takes one sequence at at time; this requires isolating sequences in multifasta files into temporary files
+echo $header > $seq_file
+echo $seq >> $seq_file
+
+#run the alphafold2 run_docker.py script
+python3 $alphafold2_script \
+--fasta_paths=data/sequence/genes/aa/signalp/extracellular/tmp.fasta \
+--max_template_date=2020-05-14 \
+--data_dir=$reference_data \
+--output_dir=$output_path
+done
+done
+
+rm -fr $tmp_path 2> /dev/null
+```
+
+
