@@ -476,23 +476,23 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
 }
 
 #filters fasta files based on gene lists in a target file. gene lists are to have one gene id per line in target file
-filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, dir.genes.aa="", ex_gene_list, ex_gene=".faa", col=1, header.n=0, sep='\t', min.sep=1, max.sep=1){
+filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, ex_gene_list, dir.genes="", out_ex="_filtered.faa", ex_gene=".faa", col=1, header.n=0, sep='\t', min.sep=1, max.sep=1, apply.grep=FALSE, grep.filter=""){
   
-  if (dir.genes.aa %in% ""){
-    dir.genes.aa <- "./data/sequence/genes/aa/"
+  if (dir.genes %in% ""){
+    dir.genes <- "./data/sequence/genes/aa/"
   }
   
-  if (!dir.exists(dir.genes.aa) | (length(list.files(dir.genes.aa)) == 0 )){
-    stop("The amino acid fasta file directory does not exist or has no files.")
+  if (!dir.exists(dir.genes) | (length(list.files(dir.genes)) == 0 )){
+    stop("The fasta file directory does not exist or has no files.")
   }
   
   if (!dir.exists(dir.gene.list) | (length(list.files(dir.gene.list)) == 0 )){
     stop("The gene list directory does not exist or has no files.")
   }
   
-  inpath.list <- paste0(dir.genes.aa,accession.list,ex_gene)
+  inpath.list <- paste0(dir.genes,accession.list,ex_gene)
   gene.list <- paste0(dir.gene.list,accession.list,ex_gene_list)
-  outpath.list <- paste0(dir.genes.aa,accession.list,"_filtered",ex_gene)
+  outpath.list <- paste0(dir.genes,accession.list,out_ex)
   tmp.list <- paste0(dir.gene.list,"tmp_list.txt")
   
   n.accession <- length(accession.list)
@@ -522,6 +522,13 @@ filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, dir.genes
                                 min.sep,
                                 max.sep,
                                 gene.list[i])
+    }
+    
+    
+    if (apply.grep == TRUE){
+      cmd.preprocess <- sprintf("%s | grep \"%s\"",
+                                cmd.preprocess,
+                                grep.filter)
     }
     
     cmd.preprocess <- sprintf("%s | cut -f %s > %s",
@@ -581,6 +588,7 @@ align_short_reads <- function(accession.list, dir.genes.abundance="", dir.genes.
   
 }
 
+#generate null sequences using swiss prot bulk AA frequencies
 null_sequence <- function(filepath,seq.len,rep=1,w=c(),alphabet=c("A","R","N","D","C","Q","E","G","H","I","L","K","M","F","P","S","T","W","Y","V")){
   
   if (!dir.exists(dirname(filepath))){ 
@@ -618,6 +626,8 @@ null_sequence <- function(filepath,seq.len,rep=1,w=c(),alphabet=c("A","R","N","D
   }
 }
 
+#blastp
+#query a custom database using blastp
 blastp_query <- function(accession.list, db.path, dir.output="", dir.genes="", genes_ex='.faa', blast.options="", blast.cores=30){
   
   warning("Note that this function uses parallelization native to blastp's implementation.\n\nThis is slower than gnu parallel using single threaded blastp on large blast searches.\n\nMy point is that you should use gnu parallel via the shell for large blast searchs...")
@@ -650,4 +660,24 @@ blastp_query <- function(accession.list, db.path, dir.output="", dir.genes="", g
   }
   
 }
+
+#seqtk sample -- note that this command samples without replacement!!!! 
+#randomly sample fasta file
+sample_fasta <- function(accession.list, n, gene_ex, dir.gene){
+  
+  inpath.list <- paste0(dir.gene,accession.list,gene_ex)
+  outpath.list <- paste0(dir.gene,accession.list,"_",as.character(n),gene_ex)
+  
+  n.accession <- length(accession.list)
+  for (i in 1:n.accession){
+    seed.int <- sample(1:1e4,1)
+    cmd.sample <- sprintf("seqtk sample -s %s %s %s > %s",
+                          seed.int,
+                          inpath.list[i],
+                          n,
+                          outpath.list[i])
+    system(cmd.sample)
+  }
+}
+
 

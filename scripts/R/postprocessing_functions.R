@@ -396,29 +396,31 @@ cluster_profiles <- function(df){
 }
 
 
-annotation_rank_abundance(dir,max.rank=20){
+plot_rank_abundance <- function(accession.list,dir,ex,sep='\t',col=1,header=TRUE,max.rank=20,name.split=" ",parse.index=1){
   
-  load_data<-function(x){
-    tmp_df=read.table(x,header=TRUE,sep='\t')
-    tmp_df$dataset=strsplit(tail(strsplit(x,'/')[[1]],n=1),'[_]')[[1]][1]
+  load_data<-function(x,sep,header,name.split,parse.index=1){
+    vec=read.table(x,header=header,sep=sep)[,col]
+    dataset=strsplit(basename(x),name.split)[[1]][parse.index]
     
-    return(tmp_df)
+    df=data.frame(vec,dataset)
+    
+    return(df)
   }
   
-  vec<-list.files(dir,full.names = TRUE)  
+  vec <- paste0(dir,accession.list,ex)
   
-  df<-map_dfr(vec,load_data) %>%
-    group_by(annotation,dataset) %>%
+  df<-map_dfr(vec,load_data,sep=sep,header=header,name.split=name.split,parse.index=parse.index) %>%
+    group_by_all() %>%
     summarize(abundance=n()) %>%
     ungroup() %>%
     group_by(dataset) %>%
     mutate(RA=abundance/sum(abundance),
            rank=rank(-RA,ties.method="first")) %>%
-    filter(rank<=10)
+    filter(rank<=max.rank)
   
   ggplot(df,aes(rank,RA,fill=dataset))+
     geom_col(position="dodge") +
-    geom_text(aes(label=annotation),color="white",angle=90,hjust=1,
+    geom_text(aes(label=vec),angle=90,hjust=-0.1,
               size=3,position=position_dodge(0.9)) +
     scale_fill_brewer(palette="Dark2") +
     ylim(0,0.2) +
@@ -427,9 +429,6 @@ annotation_rank_abundance(dir,max.rank=20){
           panel.grid.minor = element_blank()) +
     xlab('Rank') +
     ylab('Annotation Relative Abundance')
-  
-  
-  
-  
+
 }
 
