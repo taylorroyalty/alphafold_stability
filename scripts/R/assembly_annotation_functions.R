@@ -565,17 +565,43 @@ align_short_reads <- function(accession.list, dir.genes.abundance="", dir.genes.
     dir.genes.abundance <- "./data/sequence/genes/abundance/"
   }
   
+  dir.index <- paste0(dir.genes.abundance,'/indices_sam/')
+  dir.results <- paste0(dir.genes.abundance,'/results/')
+  
+  dir.create(dir.index,recursive = TRUE)
+  dir.create(dir.results,recursive = TRUE)
+  
   inpath.fastq.list <- paste0(dir.fastq.trim,accession.list)
   inpath.gene.nuc.list <- paste0(dir.genes.nuc,accession.list,ex_gene)
-  outpath.index.list <- paste0(dir.genes.abundance)
-  outpath.sam.list <- paste0(dir.genes.abundance,".sam")
+  outpath.results.list <- paste0(dir.results,accession.list)
+  outpath.index.list <- paste0(dir.index,accession.list)
+  outpath.sam.list <- paste0(dir.index,accession.list,".sam")
+  outpath.bam.list <- paste0(dir.index,accession.list,".bam")
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
-    cmd.bw2.build<-sprintf("bowtie2-build -f %s %s --threads %s",
-                           inpath.gene.nuc.list[i],
-                           outpath.index.list[i],
-                           align.cpu)
+    cmd.bw2.build <- sprintf("bowtie2-build -f %s %s --threads %s",
+                             inpath.gene.nuc.list[i],
+                             outpath.index.list[i],
+                             align.cpu)
+
+    system(cmd.bw2.build)
+
+    cmd.bw2 <- sprintf("bowtie2 -x %s -1 %s_1.fastq -2 %s_2.fastq -S %s -p %s",
+                       outpath.index.list[i],
+                       inpath.fastq.list[i],
+                       inpath.fastq.list[i],
+                       outpath.sam.list[i],
+                       align.cpu)
+
+    system(cmd.bw2)
+
+
+    cmd.bam <- sprintf("samtools view -@ 30 -bS %s | samtools sort -@ 30 -o %s",
+                       outpath.sam.list[i],
+                       outpath.bam.list[i])
+    
+    system(cmd.bam)
   }
   
   "grep -v '#' %s | grep 'ID=' | cut -f1 -d ';' | sed 's/ID=//g' | cut -f1,4,5,7,9 |  awk -v OFS='\t' '{print $1,\"PROKKA\",\"CDS\",$2,$3,\".\",$4,\".\",\"gene_id \" $5}'"
