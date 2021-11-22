@@ -188,7 +188,7 @@ assemble_reads <- function(accession.list, dir.fastq.trim="", dir.assembly="", m
 #prodigal
 #predict open reading frames; extension corresponds to genome extension. 
 #The default corresponds to the megahit's default extension
-predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.genes.nuc="", dir.genes.gff="", extension=".contigs.fa"){
+predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.genes.nuc="", dir.genes.gff="", out.ex="", gff.only=FALSE, extension=".contigs.fa"){
   
   if (dir.genes.aa %in% ""){
     dir.genes.aa <- "data/sequence/genes/aa/"
@@ -214,38 +214,54 @@ predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.g
     stop("The directory containing assemblies/genomes either does not exist or has no files.")
   }
   
-  inpath.list <- paste0(dir.assembly,accession.list)
-  outdir.aa <- paste0(dir.genes.aa,accession.list)
-  outdir.nuc <- paste0(dir.genes.nuc,accession.list)
-  outdir.gff <- paste0(dir.genes.gff,accession.list)
+  inpath.list <- paste0(dir.assembly,accession.list,extension)
+  outdir.aa <- paste0(dir.genes.aa,accession.list,out.ex)
+  outdir.nuc <- paste0(dir.genes.nuc,accession.list,out.ex)
+  outdir.gff <- paste0(dir.genes.gff,accession.list,out.ex)
   
   n.accession <- length(accession.list)
   for(i in 1:n.accession) {
     
-    inpath.tmp <- paste0(inpath.list[i],'/',accession.list[i],extension)
+    # inpath.tmp <- paste0(inpath.list[i],'/',accession.list[i],extension)
     
-    if (!file.exists(inpath.tmp)){
-      warning(sprintf("The file: '%s' does not exist.",inpath.tmp))
+    if (!file.exists(inpath.list[i])){
+      warning(sprintf("The file: '%s' does not exist.",inpath.list[i]))
       next
     }
     
-    cmd.ORF <- sprintf("prodigal -q -f gff -i %s -a %s.faa -d %s.fna -o %s.gff",
-                       inpath.tmp, #genomes/assemblies
-                       outdir.aa[i], #amino acid sequences
-                       outdir.nuc[i], #nucleic acid sequences
-                       outdir.gff[i]) #generic feature format
-    system(cmd.ORF)
+    if (gff.only ==TRUE){
+      
+      cmd.ORF <- sprintf("prodigal -q -f gff -i %s -o %s.gff",
+                         inpath.list[i], #genomes/assemblies
+                         outdir.gff[i]) #generic feature format
+      
+      system(cmd.ORF)
+      
+    } else {
+      
+      cmd.ORF <- sprintf("prodigal -q -f gff -i %s -a %s.faa -d %s.fna -o %s.gff",
+                         inpath.list[i], #genomes/assemblies
+                         outdir.aa[i], #amino acid sequences
+                         outdir.nuc[i], #nucleic acid sequences
+                         outdir.gff[i]) #generic feature format
+      
+      system(cmd.ORF)
+      
+      cmd.clean.aa <- sprintf("sed -i 's/\\*//g;s/^>/>%s\\_/' %s",
+                              accession.list[i],
+                              paste0(outdir.aa[i],'.faa')) #remove astrieks and replace contig name with accession using sed
+      
+      cmd.clean.nuc <- sprintf("sed -i 's/^>/>%s\\_/' %s",
+                               accession.list[i],
+                               paste0(outdir.nuc[i],'.fna')) #replace contig name with accession using sed
+      system(cmd.clean.aa)
+      system(cmd.clean.nuc)
+    }
+    
+
     
     
-    cmd.clean.aa <- sprintf("sed -i 's/\\*//g;s/^>/>%s\\_/' %s",
-                            accession.list[i],
-                            outdir.aa[i]) #remove astrieks and replace contig name with accession using sed
     
-    cmd.clean.nuc <- sprintf("sed -i 's/^>/>%s\\_/' %s",
-                             accession.list[i],
-                             outdir.nuc[i]) #replace contig name with accession using sed
-    system(cmd.clean.aa)
-    system(cmd.clean.nuc)
   }
 }
 
@@ -320,7 +336,7 @@ dbcan_annotation <- function(accession.list, dir.genes.aa="", dir.annotation.hmm
     dir.annotation.hmm <- "./data/sequence/annotation/hmm/"
   }
   
-  annotate_hmmscan(accession.list, dir.genes.aa=dir.genes.aa, dir.annotation.hmm=dir.annotation.hmm, db, hmm.cores, evalue)
+  annotate_hmmscan(accession.list, dir.genes.aa=dir.genes.aa, dir.annotation.hmm=dir.annotation.hmm, db, hmm.cores=hmm.cores, evalue=evalue)
   
   hmm.parser <- './scripts/bash/hmmscan-parser.sh'
   if (!file.exists(hmm.parser)){
@@ -379,7 +395,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     dir.signalp <- "./data/sequence/genes/aa/signalp/signalp/"
   }
   
-  unlink(dir.tmp,recursive = TRUE)
+  unlink(dir.signalp,recursive = TRUE)
   dir.create(dir.signalp,recursive = TRUE)
   outdir.tmp <- paste0(dir.signalp,accession.list) #temporary files for each organism in sigalp
   
@@ -395,12 +411,15 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     cmd.signalp_gram_pos <- sprintf("signalp -fasta %s -org gram+ -format short -prefix %s",
                                     inpath.list[i],
                                     outpath.list[1])
+    
     cmd.signalp_gram_neg <- sprintf("signalp -fasta %s -org gram- -format short -prefix %s",
                                     inpath.list[i],
                                     outpath.list[2])
+    
     cmd.signalp_gram_arc <- sprintf("signalp -fasta %s -org arch -format short -prefix %s",
                                     inpath.list[i],
                                     outpath.list[3])
+    
     cmd.signalp_gram_euk <- sprintf("signalp -fasta %s -org euk -format short -prefix %s",
                                     inpath.list[i],
                                     outpath.list[4])
@@ -409,7 +428,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     
     result.ex <- data.frame(NULL)
     for (j in 1:4){
-      system(cmd.signalp_all[j])
+      # system(cmd.signalp_all[j])
       result.path.tmp <- paste0(outpath.list[j],"_summary.signalp5")
       result.ex <- read.table(result.path.tmp,skip=2, sep = '\t') %>%
         filter(!V2 %in% "OTHER") %>%
@@ -445,7 +464,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     system(sprintf("> %s",outpath_in.list[i]))
     
     #build command for isolating seq--if cleave true, use sed to trucate sequences 
-    cmd.cleave <- c("grep -A 1 %s %s | sed '2s/^.\\{%s\\}//' >> %s")
+    cmd.cleave <- c("grep -A 1 \"%s \" %s | sed '2s/^.\\{%s\\}//' >> %s")
     if (cleave == FALSE) {
       result.ex$cleavage <- result.ex$cleavage*0  
     }
@@ -471,8 +490,8 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     }
     
   }
-  
-  unlink(dir.tmp,recursive = TRUE)
+  # 
+  # unlink(dir.tmp,recursive = TRUE)
 }
 
 #filters fasta files based on gene lists in a target file. gene lists are to have one gene id per line in target file
@@ -546,7 +565,6 @@ filter_fasta_with_gene_list <- function(accession.list, dir.gene.list, ex_gene_l
     system(cmd.extract)
   }
   
-  unlink(tmp.list)
 }
 
 #bowtie2; samtools
@@ -565,7 +583,7 @@ align_short_reads <- function(accession.list, dir.genes.abundance="", dir.genes.
     dir.genes.abundance <- "./data/sequence/genes/abundance/"
   }
   
-  dir.index <- paste0(dir.genes.abundance,'/indices_sam/')
+  dir.index <- paste0(dir.genes.abundance,'/alignment/')
   dir.results <- paste0(dir.genes.abundance,'/results/')
   
   dir.create(dir.index,recursive = TRUE)
@@ -584,19 +602,19 @@ align_short_reads <- function(accession.list, dir.genes.abundance="", dir.genes.
                              inpath.gene.nuc.list[i],
                              outpath.index.list[i],
                              align.cpu)
-
+    
     system(cmd.bw2.build)
-
+    
     cmd.bw2 <- sprintf("bowtie2 -x %s -1 %s_1.fastq -2 %s_2.fastq -S %s -p %s",
                        outpath.index.list[i],
                        inpath.fastq.list[i],
                        inpath.fastq.list[i],
                        outpath.sam.list[i],
                        align.cpu)
-
+    
     system(cmd.bw2)
-
-
+    
+    
     cmd.bam <- sprintf("samtools view -@ 30 -bS %s | samtools sort -@ 30 -o %s",
                        outpath.sam.list[i],
                        outpath.bam.list[i])
@@ -604,15 +622,64 @@ align_short_reads <- function(accession.list, dir.genes.abundance="", dir.genes.
     system(cmd.bam)
   }
   
-  "grep -v '#' %s | grep 'ID=' | cut -f1 -d ';' | sed 's/ID=//g' | cut -f1,4,5,7,9 |  awk -v OFS='\t' '{print $1,\"PROKKA\",\"CDS\",$2,$3,\".\",$4,\".\",\"gene_id \" $5}'"
-  
-  "bowtie2-build -f $seqfile $mapdir$basename --threads 30"
-  "bowtie2 -x $mapdir$basename -1 $fastqdir$line$fP_ex -2 $fastqdir$line$bP_ex -S $mapdir$line$sam_ex -p 30"
-  
-  "samtools view -@ 30 -bS $mapdir$line$sam_ex | samtools sort -@ 30 -o $mapdir$line$bam_sort_ex"
-  
   
 }
+
+
+#featureCounts
+#convert bam to abundance files--here, I utilize gff provided by prodigal and convert those gff into gtf using PROKKA's gff to gtf conversion bash commands
+alignment_to_abundance <- function(accession.list, dir.genes.abundance="", ex.abund="_abundance.tsv", dir.align="", ex.align=".bam", ex.gtf=".gtf", dir.genes.gtf="", gff2gtf=FALSE, ex.gff=".gff", dir.genes.gff="", feat.cores=30) {
+  
+  if (dir.genes.abundance %in% ""){
+    dir.genes.abundance <- "./data/sequence/genes/abundance/"
+  }
+  
+  if (dir.align %in% ""){
+    dir.align <- "./data/sequence/genes/abundance/alignment/"
+  }
+  
+  if (dir.genes.gtf %in% ""){
+    dir.genes.gtf <- "./data/sequence/genes/gtf/"
+  }
+  
+  n.accession <- length(accession.list)
+  
+  if (gff2gtf == TRUE){
+    
+    if (dir.genes.gff %in% ""){
+      dir.genes.gff <- "./data/sequence/genes/gff/"
+    }
+    
+    if (!dir.exists(dir.genes.gtf)){
+      dir.create(dir.genes.gtf,recursive = TRUE)
+    }
+    
+    gff.list <- paste0(dir.genes.gff,accession.list,ex.gff)
+    gtf.list <- paste0(dir.genes.gtf,accession.list,ex.gtf)
+    
+    for (i in 1:n.accession){
+      
+      cmd.gff2gtf <- sprintf("grep -v \"#\" %s | grep \"ID=\" | cut -f1 -d ';' | sed 's/ID=//g' | cut -f1,4,5,7,9 |  awk -v OFS='\t' '{print $1,\"PROKKA\",\"CDS\",$2,$3,\".\",$4,\".\",\"gene_id \" $5}' > %s",
+                             gff.list[i],
+                             gtf.list[i])
+      
+      system(cmd.gff2gtf)
+      
+    }
+  }
+  
+  align.list <- paste0(dir.align,accession.list,ex.align)
+  outpath.list <- paste0(dir.genes.abundance,accession.list,ex.abund)
+  
+  cmd.feature <- sprintf("featureCounts -p -T %s -s 0 -t CDS -a %s -o %s %s",
+                         feat.cores,
+                         gtf.list[i],
+                         outpath.list[i],
+                         align.list[i])
+  
+  system(cmd.feature)
+}
+
 
 #generate null sequences using swiss prot bulk AA frequencies
 null_sequence <- function(filepath,seq.len,rep=1,w=c(),alphabet=c("A","R","N","D","C","Q","E","G","H","I","L","K","M","F","P","S","T","W","Y","V")){
