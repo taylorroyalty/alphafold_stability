@@ -148,7 +148,7 @@ trim_reads <- function(accession.list, dir.fastq.trim="", dir.fastq.raw="", fast
 assemble_reads <- function(accession.list, dir.fastq.trim="", dir.assembly="", megahit.cores=30, min.contig.length = 1000){
   
   if (dir.assembly %in% ""){
-    dir.assembly <- "./data/sequence/assemblies/"
+    dir.assembly <- "./data/sequence/sequences/"
   }
   
   if (!dir.exists(dir.assembly)){
@@ -167,13 +167,14 @@ assemble_reads <- function(accession.list, dir.fastq.trim="", dir.assembly="", m
   outdirs <- paste0(dir.assembly,accession.list)
   
   n.accession <- length(accession.list)
+
   for(i in 1:n.accession) {
-    
-    if (!file.exists(paste0(inpath.list[i],'/',accession.list[i],'_1.fastq')) | !file.exists(paste0(inpath.list[i],'/',accession.list[i],'_2.fastq'))){
+
+    if (!file.exists(paste0(inpath.list[i],'_1.fastq')) | !file.exists(paste0(inpath.list[i],'_2.fastq'))){
       warning(sprintf("One or both paired fastq files for: '%s' is missing",accession.list[i]))
       next
     }
-    
+
     cmd.assemble <- sprintf("megahit -1 %s_1.fastq -2 %s_2.fastq --presets meta-sensitive -t %s -o %s --out-prefix %s --min-contig-len %s",
                             inpath.list[i],
                             inpath.list[i],
@@ -207,7 +208,7 @@ predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.g
   }
   
   if (dir.assembly %in% ""){
-    dir.assembly <- "./data/sequence/assemblies/"
+    dir.assembly <- "./data/sequence/sequences/"
   }
   
   if (!dir.exists(dir.assembly) | (length(list.files(dir.assembly)) == 0 )){
