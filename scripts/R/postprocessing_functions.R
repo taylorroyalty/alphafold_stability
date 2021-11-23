@@ -429,6 +429,45 @@ plot_rank_abundance <- function(accession.list,dir,ex,sep='\t',col=1,header=TRUE
           panel.grid.minor = element_blank()) +
     xlab('Rank') +
     ylab('Annotation Relative Abundance')
-
+  
 }
 
+
+rank_relative_abundance <- function(accession.list,dir,ex,sep='\t',col=1,skip=0,header=TRUE,max.rank=40,name.split=" ",parse.index=1){
+  
+  load_data<-function(x,sep,header,name.split,parse.index=1,skip){
+    vec=read.table(x,header=header,sep=sep,skip = skip)[,col]
+    dataset=strsplit(basename(x),name.split)[[1]][parse.index]
+    
+    df=data.frame(vec,dataset)
+    
+    return(df)
+  }
+  
+  vec <- paste0(dir,accession.list,ex)
+  
+  df<-map_dfr(vec,load_data,sep=sep,header=header,name.split=name.split,parse.index=parse.index,skip=skip) %>%
+    group_by(dataset) %>%
+    mutate(RA=(V7/V6)/(sum(V7/V6)),
+           rank=rank(-RA,ties.method="first")) %>%
+    filter(rank<=max.rank)
+  
+  f<- ggplot(df,aes(rank,RA,fill=dataset))+
+    geom_col(position="dodge") +
+    # geom_text(aes(label=vec),angle=90,hjust=-0.1,
+    # size=3,position=position_dodge(0.9)) +
+    scale_fill_brewer(palette="Dark2") +
+    # ylim(0,0.2) +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank()) +
+    xlab('Rank') +
+    ylab('Gene Relative Abundance')
+  
+  print(f)
+  
+  df
+  
+  
+  
+}

@@ -3,11 +3,6 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
-
 ```{r}
 #Append conda environment bin path to PATH
 conda.env.bin.path.assembly_annotation <- "/home/troyalty/Software/bioinformatics/miniconda3/envs/assembly_annotation/bin"
@@ -114,9 +109,12 @@ blast.cores <- 30
 
 
 
-#create directory for genes that we will predict structures of
-dir.structure <- 'data/sequence/structures/genes'
-dir.create(dir.structure,recursive = TRUE)
+#create directory for genes that we will predict protein structures for the most rich proteins 
+dir.struct.rich <- 'data/sequence/structures/genes/richness_analysis/'
+if (dir.exists(dir.struct.rich)){
+  unlink(dir.struct.rich,recursive = TRUE)
+}
+dir.create(dir.struct.rich,recursive = TRUE)
 
 #Identify enzyme annotations with greatest richness
 plot_rank_abundance(accession.list,
@@ -167,7 +165,7 @@ for (hmm in hmm.list){
                blast.cores=blast.cores)
   
   #move target genes to directory for structure prediction1
-  system(sprintf("mv data/sequence/genes/aa/signalp/extracellular/*_%s%s data/sequence/structures/genes/",
+  system(sprintf("mv data/sequence/genes/aa/signalp/extracellular/*_%s%s data/sequence/structures/genes/richness_analysis/",
                  n_sample,
                  hmm.ex.tmp))
   
@@ -180,9 +178,9 @@ for (hmm in hmm.list){
 
 ```{r warning=FALSE}
 
-dir.extracellular <- 'data/sequence/genes/nuc/signalp/extracellular/'
-dir.genes.aa <- "data/sequence/genes/aa/signalp/extracellular/"
-dir.genes.tmp <- 'data/sequence/genes/nuc/signalp/extracellular/tmp/'
+dir.nuc.extracellular <- 'data/sequence/genes/nuc/signalp/extracellular/'
+dir.aa.extracellular <- "data/sequence/genes/aa/signalp/extracellular/"
+dir.genes.nuc.tmp <- 'data/sequence/genes/nuc/signalp/extracellular/tmp/'
 dir.genes.nuc <- 'data/sequence/genes/nuc/'
 ex_gene_list <- 'data/sequence/'
 
@@ -192,25 +190,36 @@ in.nuc.ex <- "_filtered.fna"
 accession.list <- c("SRR7066493")
 
 
+blast.options <- "-max_target_seqs 1 -evalue 0.1 -outfmt 6"
+n_sample <- 40
+sample.accession <- "SRR7066493"
+blast.accession.list <- c("SRR7066493")
+blast.cores <- 30
 
+#create directory for genes that we will predict protein structures for the most abundant proteins 
+dir.struct.RA <- 'data/sequence/structures/genes/RA_analysis/'
 
-if(dir.exists(dir.extracellular)){
-  unlink(dir.extracellular, recursive = TRUE)
+if (dir.exists(dir.struct.RA)){
+  unlink(dir.struct.RA,recursive = TRUE)
 }
+dir.create(dir.struct.RA,recursive = TRUE)
 
-if(dir.exists(dir.gene.tmp)){
-  unlink(dir.gene.tmp, recursive = TRUE)
+
+if(dir.exists(dir.nuc.extracellular)){
+  unlink(dir.nuc.extracellular, recursive = TRUE)
 }
+dir.create(dir.nuc.extracellular, recursive = TRUE)
 
-
-dir.create(dir.structure,recursive = TRUE)
-dir.create(dir.gene.tmp,recursive = TRUE)
+if(dir.exists(dir.genes.nuc.tmp)){
+  unlink(dir.genes.nuc.tmp, recursive = TRUE)
+}
+dir.create(dir.genes.nuc.tmp,recursive = TRUE)
 
 for (a in accession.list){
-  aa.tmp <- paste0(dir.genes.aa,a,in.aa.ex)
+  aa.tmp <- paste0(dir.aa.extracellular,a,in.aa.ex)
   nuc.tmp <- paste0(dir.genes.nuc,a,in.nuc.ex)
-  list.tmp <- paste0(dir.genes.tmp,a,'_list.txt')
-  out.tmp <- paste0(dir.extracellular,a,out.ex)
+  list.tmp <- paste0(dir.genes.nuc.tmp,a,'_list.txt')
+  out.tmp <- paste0(dir.nuc.extracellular,a,out.ex)
   
   cmd.create.list <- sprintf("grep \"^>\" %s | cut -f 1 -d ' ' | sed 's/>//' > %s",
                              aa.tmp,
@@ -225,18 +234,78 @@ for (a in accession.list){
                          out.tmp)
   
   system(cmd.extract)
- 
   
   
+  #align high quality short reads to tentatively exported dbcan positive enzymes
   align_short_reads(a, 
-                    dir.genes.nuc=dir.extracellular,
+                    dir.genes.nuc=dir.nuc.extracellular,
                     ex_gene=out.ex,
                     align.cpu=30)
+  
+  #predict ORFs for signal peptide positive and dbcan annotated genes--this is to generate a gff for conversion to gtf in alignment_to_abundance  
+  predict_ORFs(a,gff.only=TRUE,dir.assembly = dir.extracellular, out.ex=out.ex, extension=out.ex)
+  
+  alignment_to_abundance(a,ex.gff=paste0(out.ex,".gff"), ex.gtf=paste0(out.ex,".gtf"), gff2gtf=TRUE) 
   
   
 }
 
-unlink(dir.gene.tmp,recursive = TRUE)
+#plot rank abundance curve
+df <- plot_rank_relative_abundance(sample.accession,
+                                   dir='data/sequence/genes/abundance/',
+                                   ex="_abundance.tsv",
+                                   header=FALSE,
+                                   name.split="_",
+                                   skip=2,
+                                   col = c(2,6,7))
+
+#write a temporary list to isolate amino acid sequences
+abundant.list <- paste0(dir.genes.nuc.tmp,a,"_abundant.txt")
+data.table::fwrite(as.list(df$V2),paste0(dir.genes.nuc.tmp,a,"_abundant.txt"),col.names = FALSE, row.names = FALSE,quote = FALSE,sep='\n')
+
+
+
+filter_fasta_with_gene_list(accession.list,
+                              dir.gene.list=abundant.list,
+                              dir.genes=dir.genes.aa,
+                              ex_gene_list=hmm.gene.list,
+                              ex_gene=target_ex,
+                              out_ex=hmm.ex.tmp,
+                              col=3,
+                              apply.grep = TRUE,
+                              grep.filter = hmm)
+  
+  sample_fasta(accession.list = sample.accession, 
+               n = n_sample,
+               gene_ex = hmm.ex.tmp,
+               dir.gene = dir.extracellular)
+  
+  #copy sampled file to data/database to create blast database
+  system(sprintf("cp data/sequence/genes/aa/signalp/extracellular/%s_%s%s %s",
+                 sample.accession,
+                 n_sample,
+                 hmm.ex.tmp,
+                 db.path))
+  
+  #make blast database
+  db.path.tmp=paste0(db.path,sample.accession,"_",as.character(n_sample),hmm.ex.tmp)
+  make_database(file=db.path.tmp,fun = "makeblastdb")
+  
+  
+  #blast other files to find homolog pairings
+  blastp_query(blast.accession.list, 
+               db.path=db.path.tmp,
+               dir.output=dir.blast.output,
+               dir.genes=dir.extracellular,
+               genes_ex=hmm.ex.tmp,
+               blast.options=blast.options, 
+               blast.cores=blast.cores)
+  
+  #move target genes to directory for structure prediction1
+  system(sprintf("mv data/sequence/genes/aa/signalp/extracellular/*_%s%s data/sequence/structures/genes/richness_analysis/",
+                 n_sample,
+                 hmm.ex.tmp))
+
 
 ```
 
