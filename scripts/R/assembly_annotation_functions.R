@@ -189,7 +189,7 @@ assemble_reads <- function(accession.list, dir.fastq.trim="", dir.assembly="", m
 #prodigal
 #predict open reading frames; extension corresponds to genome extension. 
 #The default corresponds to the megahit's default extension
-predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.genes.nuc="", dir.genes.gff="", out.ex="", gff.only=FALSE, extension=".contigs.fa"){
+predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.genes.nuc="", dir.genes.gff="", in.ex = ".contigs.fa",out.ex="", gff.only=FALSE, extension=".contigs.fa"){
   
   if (dir.genes.aa %in% ""){
     dir.genes.aa <- "data/sequence/genes/aa/"
@@ -215,7 +215,7 @@ predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.g
     stop("The directory containing assemblies/genomes either does not exist or has no files.")
   }
   
-  inpath.list <- paste0(dir.assembly,accession.list,extension)
+  inpath.list <- paste0(dir.assembly,accession.list,in.ex)
   outdir.aa <- paste0(dir.genes.aa,accession.list,out.ex)
   outdir.nuc <- paste0(dir.genes.nuc,accession.list,out.ex)
   outdir.gff <- paste0(dir.genes.gff,accession.list,out.ex)
@@ -224,7 +224,6 @@ predict_ORFs <- function(accession.list, dir.assembly="", dir.genes.aa="", dir.g
   for(i in 1:n.accession) {
     
     # inpath.tmp <- paste0(inpath.list[i],'/',accession.list[i],extension)
-    
     if (!file.exists(inpath.list[i])){
       warning(sprintf("The file: '%s' does not exist.",inpath.list[i]))
       next
@@ -429,7 +428,7 @@ filter_signal_peptide <- function(accession.list, dir.genes.aa="", dir.extracell
     
     result.ex <- data.frame(NULL)
     for (j in 1:4){
-      # system(cmd.signalp_all[j])
+      system(cmd.signalp_all[j])
       result.path.tmp <- paste0(outpath.list[j],"_summary.signalp5")
       result.ex <- read.table(result.path.tmp,skip=2, sep = '\t') %>%
         filter(!V2 %in% "OTHER") %>%
